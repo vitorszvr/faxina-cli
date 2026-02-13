@@ -188,3 +188,39 @@ pub fn print_no_stale_projects(days: u64) {
     );
     println!();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_size_bytes() {
+        assert_eq!(format_size(0), "0 B");
+        assert_eq!(format_size(512), "512 B");
+        assert_eq!(format_size(1023), "1023 B");
+    }
+
+    #[test]
+    fn test_format_size_kb() {
+        assert_eq!(format_size(1024), "1 KB");
+        assert_eq!(format_size(1536), "2 KB");
+    }
+
+    #[test]
+    fn test_format_size_mb() {
+        assert_eq!(format_size(1024 * 1024), "1.0 MB");
+        assert_eq!(format_size(5 * 1024 * 1024), "5.0 MB");
+    }
+
+    #[test]
+    fn test_format_size_gb() {
+        assert_eq!(format_size(1024 * 1024 * 1024), "1.00 GB");
+        assert_eq!(format_size(2 * 1024 * 1024 * 1024), "2.00 GB");
+    }
+
+    #[test]
+    fn test_days_ago_recent() {
+        let now = SystemTime::now();
+        assert_eq!(days_ago(now), "0 dias atrás");
+    }
+}

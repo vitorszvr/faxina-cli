@@ -271,3 +271,86 @@ pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
     stale.sort_by(|a, b| b.total_size().cmp(&a.total_size()));
     stale
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn make_temp_dir() -> PathBuf {
+        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!(
+            "limpador_test_{}_{}", std::process::id(), id
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_is_rust_target() {
+        let dir = make_temp_dir().join("rust_proj");
+        fs::create_dir_all(dir.join("target")).unwrap();
+        fs::write(dir.join("Cargo.toml"), "[package]").unwrap();
+        assert!(is_rust_target(&dir.join("target")));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_is_rust_target_false() {
+        let dir = make_temp_dir().join("not_rust");
+        fs::create_dir_all(dir.join("target")).unwrap();
+        assert!(!is_rust_target(&dir.join("target")));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_is_node_project() {
+        let dir = make_temp_dir().join("node_proj");
+        fs::create_dir_all(dir.join("node_modules")).unwrap();
+        fs::write(dir.join("package.json"), "{}").unwrap();
+        assert!(is_node_project(&dir.join("node_modules")));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_is_python_venv() {
+        let dir = make_temp_dir().join("py_proj");
+        let venv = dir.join("venv");
+        fs::create_dir_all(&venv).unwrap();
+        fs::write(venv.join("pyvenv.cfg"), "").unwrap();
+        assert!(is_python_venv(&venv));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_is_go_vendor() {
+        let dir = make_temp_dir().join("go_proj");
+        fs::create_dir_all(dir.join("vendor")).unwrap();
+        fs::write(dir.join("go.mod"), "module example").unwrap();
+        assert!(is_go_vendor(&dir.join("vendor")));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_is_gradle_build() {
+        let dir = make_temp_dir().join("gradle_proj");
+        fs::create_dir_all(dir.join("build")).unwrap();
+        fs::write(dir.join("build.gradle"), "").unwrap();
+        assert!(is_gradle_build(&dir.join("build")));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_dir_size() {
+        let dir = make_temp_dir().join("size_test");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("a.txt"), "hello").unwrap(); // 5 bytes
+        fs::write(dir.join("b.txt"), "world!").unwrap(); // 6 bytes
+        assert_eq!(dir_size(&dir), 11);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+}
