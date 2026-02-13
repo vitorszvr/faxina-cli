@@ -9,8 +9,23 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub Release
+        id: create_release
+        uses: taiki-e/create-gh-release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   release:
     name: Release - ${{ matrix.platform.release_for }}
+    needs: create-release
     strategy:
       matrix:
         platform:
