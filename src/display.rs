@@ -5,7 +5,7 @@ use colored::Colorize;
 use dialoguer::Confirm;
 
 use crate::cleaner::CleanResult;
-use crate::scanner::StaleProject;
+use crate::types::{StaleProject, DepKind};
 
 pub fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
@@ -85,12 +85,12 @@ pub fn print_scan_results(projects: &[StaleProject]) {
 
         for dep in &project.dep_dirs {
             let kind_icon = match dep.kind {
-                crate::scanner::DepKind::NodeModules => "📦",
-                crate::scanner::DepKind::Target => "🦀",
-                crate::scanner::DepKind::NextBuild => "▲ ",
-                crate::scanner::DepKind::Venv => "🐍",
-                crate::scanner::DepKind::Vendor => "📁",
-                crate::scanner::DepKind::Build => "🏗️",
+                DepKind::NodeModules => "📦",
+                DepKind::Target => "🦀",
+                DepKind::NextBuild => "▲ ",
+                DepKind::Venv => "🐍",
+                DepKind::Vendor => "📁",
+                DepKind::Build => "🏗️",
             };
             println!(
                 "    {} {} {}",

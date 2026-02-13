@@ -6,110 +6,8 @@ use std::time::{Duration, SystemTime};
 
 use jwalk::WalkDir;
 
-#[derive(Debug, Clone)]
-pub enum DepKind {
-    NodeModules,
-    Target,
-    NextBuild,
-    Venv,
-    Vendor,
-    Build,
-}
-
-impl std::fmt::Display for DepKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DepKind::NodeModules => write!(f, "node_modules"),
-            DepKind::Target => write!(f, "target"),
-            DepKind::NextBuild => write!(f, ".next"),
-            DepKind::Venv => write!(f, "venv"),
-            DepKind::Vendor => write!(f, "vendor"),
-            DepKind::Build => write!(f, "build"),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct DepDir {
-    pub path: PathBuf,
-    pub size: u64,
-    pub kind: DepKind,
-}
-
-#[derive(Debug, Clone)]
-pub struct StaleProject {
-    pub name: String,
-    pub path: PathBuf,
-    pub dep_dirs: Vec<DepDir>,
-    pub last_modified: SystemTime,
-}
-
-impl StaleProject {
-    pub fn total_size(&self) -> u64 {
-        self.dep_dirs.iter().map(|d| d.size).sum()
-    }
-}
-
-fn dir_size(path: &Path) -> u64 {
-    WalkDir::new(path)
-        .skip_hidden(false)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter_map(|e| e.metadata().ok())
-        .map(|m| m.len())
-        .sum()
-}
-
-fn is_rust_target(target_path: &Path) -> bool {
-    target_path
-        .parent()
-        .map(|p| p.join("Cargo.toml").exists())
-        .unwrap_or(false)
-}
-
-fn is_node_project(nm_path: &Path) -> bool {
-    nm_path
-        .parent()
-        .map(|p| p.join("package.json").exists())
-        .unwrap_or(false)
-}
-
-fn is_next_project(next_path: &Path) -> bool {
-    if let Some(parent) = next_path.parent() {
-        if parent.join("package.json").exists() {
-            return true;
-        }
-        for ext in &["js", "mjs", "ts"] {
-            if parent.join(format!("next.config.{}", ext)).exists() {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn is_python_venv(venv_path: &Path) -> bool {
-    venv_path.join("pyvenv.cfg").exists()
-        || venv_path.join("bin/python").exists()
-        || venv_path.join("Scripts/python.exe").exists()
-}
-
-fn is_go_vendor(vendor_path: &Path) -> bool {
-    vendor_path
-        .parent()
-        .map(|p| p.join("go.mod").exists())
-        .unwrap_or(false)
-}
-
-fn is_gradle_build(build_path: &Path) -> bool {
-    if let Some(parent) = build_path.parent() {
-        return parent.join("build.gradle").exists()
-            || parent.join("build.gradle.kts").exists();
-    }
-    false
-}
+use crate::types::{DepDir, StaleProject, dir_size};
+use crate::projects::all_project_types;
 
 fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
     let skip_dirs: Vec<&str> = vec![
@@ -150,14 +48,6 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
         }
     }
 
-    /*
-     * Usando walkdir aqui ainda faz sentido pois é uma varredura *dentro* de um projeto já identificado,
-     * que geralmente não é gigante. Mas podemos migrar para jwalk se necessário.
-     * Por enquanto, mantendo walkdir SOMENTE aqui para não mudar muitas dependências de uma vez,
-     * mas como o scanner principal agora é jwalk, o impacto é menor.
-     *
-     * IMPORTANTE: A função dir_size já foi migrada para jwalk acima.
-     */
      for entry in walkdir::WalkDir::new(project_dir)
         .follow_links(false)
         .into_iter()
@@ -184,16 +74,15 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
 
 pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
     let threshold = SystemTime::now() - Duration::from_secs(days * 24 * 3600);
+    let project_types = all_project_types();
     
     // Mutex para coletar resultados de threads paralelas
     let project_deps: Arc<Mutex<HashMap<PathBuf, Vec<DepDir>>>> = Arc::new(Mutex::new(HashMap::new()));
     
-    // Configuração do jwalk para pular .git nativamente e varrer paralelo
     WalkDir::new(root)
         .skip_hidden(false) 
         .follow_links(false)
         .process_read_dir(move |_depth, _path, _read_dir_state, children| {
-            // Filtro customizado para pular diretórios irrelevantes
             children.retain(|dir_entry_result| {
                 dir_entry_result.as_ref().map(|entry| {
                     let name = entry.file_name().to_string_lossy();
@@ -212,40 +101,25 @@ pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
                 return;
             }
 
-            let dir_name = entry.file_name().to_string_lossy();
             let dir_path = entry.path();
             
-            // Lógica de detecção
-            let dep = match dir_name.as_ref() {
-                "node_modules" if is_node_project(&dir_path) => {
-                    Some((DepKind::NodeModules, dir_path.clone()))
-                }
-                "target" if is_rust_target(&dir_path) => {
-                    Some((DepKind::Target, dir_path.clone()))
-                }
-                ".next" if is_next_project(&dir_path) => {
-                    Some((DepKind::NextBuild, dir_path.clone()))
-                }
-                "venv" | ".venv" if is_python_venv(&dir_path) => {
-                    Some((DepKind::Venv, dir_path.clone()))
-                }
-                "vendor" if is_go_vendor(&dir_path) => {
-                    Some((DepKind::Vendor, dir_path.clone()))
-                }
-                "build" if is_gradle_build(&dir_path) => {
-                    Some((DepKind::Build, dir_path.clone()))
-                }
-                _ => None,
-            };
+            // Lógica de detecção dinâmica via Traits
+            let mut detected = None;
+            for proj_type in &project_types {
+                 if proj_type.is_dependency_dir(&dir_path) {
+                     detected = Some(proj_type.dep_kind());
+                     break;
+                 }
+            }
 
-            if let Some((kind, dep_path)) = dep {
-                if let Some(parent) = dep_path.parent() {
+            if let Some(kind) = detected {
+                if let Some(parent) = dir_path.parent() {
                     let mut map = project_deps.lock().unwrap();
                     map
                         .entry(parent.to_path_buf())
                         .or_default()
                         .push(DepDir {
-                            path: dep_path,
+                            path: dir_path,
                             size: 0,
                             kind,
                         });
@@ -255,7 +129,6 @@ pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
 
     let mut stale: Vec<StaleProject> = Vec::new();
 
-    // Consumir o mapa coletado
     let map = Arc::try_unwrap(project_deps).unwrap().into_inner().unwrap();
 
     for (project_path, mut deps) in map {
@@ -268,7 +141,6 @@ pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
             continue;
         }
 
-        // Calcular tamanho das dependências (agora usando jwalk no dir_size tbm)
         for dep in &mut deps {
             dep.size = dir_size(&dep.path);
         }
@@ -290,87 +162,4 @@ pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
 
     stale.sort_by(|a, b| b.total_size().cmp(&a.total_size()));
     stale
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-    fn make_temp_dir() -> PathBuf {
-        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!(
-            "limpador_test_{}_{}", std::process::id(), id
-        ));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn test_is_rust_target() {
-        let dir = make_temp_dir().join("rust_proj");
-        fs::create_dir_all(dir.join("target")).unwrap();
-        fs::write(dir.join("Cargo.toml"), "[package]").unwrap();
-        assert!(is_rust_target(&dir.join("target")));
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn test_is_rust_target_false() {
-        let dir = make_temp_dir().join("not_rust");
-        fs::create_dir_all(dir.join("target")).unwrap();
-        assert!(!is_rust_target(&dir.join("target")));
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn test_is_node_project() {
-        let dir = make_temp_dir().join("node_proj");
-        fs::create_dir_all(dir.join("node_modules")).unwrap();
-        fs::write(dir.join("package.json"), "{}").unwrap();
-        assert!(is_node_project(&dir.join("node_modules")));
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn test_is_python_venv() {
-        let dir = make_temp_dir().join("py_proj");
-        let venv = dir.join("venv");
-        fs::create_dir_all(&venv).unwrap();
-        fs::write(venv.join("pyvenv.cfg"), "").unwrap();
-        assert!(is_python_venv(&venv));
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn test_is_go_vendor() {
-        let dir = make_temp_dir().join("go_proj");
-        fs::create_dir_all(dir.join("vendor")).unwrap();
-        fs::write(dir.join("go.mod"), "module example").unwrap();
-        assert!(is_go_vendor(&dir.join("vendor")));
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn test_is_gradle_build() {
-        let dir = make_temp_dir().join("gradle_proj");
-        fs::create_dir_all(dir.join("build")).unwrap();
-        fs::write(dir.join("build.gradle"), "").unwrap();
-        assert!(is_gradle_build(&dir.join("build")));
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn test_dir_size() {
-        let dir = make_temp_dir().join("size_test");
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("a.txt"), "hello").unwrap();
-        fs::write(dir.join("b.txt"), "world!").unwrap();
-        assert_eq!(dir_size(&dir), 11);
-        fs::remove_dir_all(&dir).unwrap();
-    }
 }

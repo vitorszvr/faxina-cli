@@ -1,3 +1,5 @@
+mod types;
+mod projects;
 mod cleaner;
 mod display;
 mod scanner;

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crate::scanner::StaleProject;
+use crate::types::StaleProject;
 
 #[derive(Debug)]
 pub struct CleanResult {
