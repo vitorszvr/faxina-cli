@@ -41,7 +41,7 @@ pub fn print_header() {
     println!();
     println!(
         "{}",
-        "  🧹 Lixeiro Inteligente — Limpador de Projetos"
+        "  🧹 Faxina CLI — Lixeiro Inteligente de Projetos"
             .bold()
             .cyan()
     );

@@ -1,8 +1,8 @@
 [package]
-name = "limpador"
+name = "faxina-cli"
 version = "0.1.0"
 edition = "2021"
-description = "Lixeiro Inteligente — CLI que limpa pastas de dependências de projetos inativos"
+description = "Faxina CLI — Limpa pastas de dependências de projetos inativos"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

@@ -1,4 +1,4 @@
-# 🧹 Limpador — Lixeiro Inteligente de Projetos
+# 🧹 Faxina CLI — Lixeiro Inteligente de Projetos
 
 CLI em Rust que varre seus diretórios de projetos e remove automaticamente pastas de dependências de projetos inativos, liberando espaço em disco sem tocar no código-fonte.
 
@@ -28,18 +28,18 @@ Desenvolvedores acumulam pastas pesadas de dependências (`node_modules`, `targe
 
 ```bash
 # Clonar e compilar
-git clone https://github.com/seu-usuario/limpador.git
-cd limpador
+git clone https://github.com/seu-usuario/faxina-cli.git
+cd faxina-cli
 cargo build --release
 
-# O binário estará em target/release/limpador
+# O binário estará em target/release/faxina-cli
 ```
 
 ## Uso
 
 ```bash
 # Varrer o diretório atual (projetos inativos há 30+ dias)
-limpador
+faxina-cli
 
 # Varrer um diretório específico
 limpador ~/Projetos
@@ -73,7 +73,7 @@ limpador ~/Projetos --quiet --yes
 ## Exemplo de Saída
 
 ```
-  🧹 Lixeiro Inteligente — Limpador de Projetos
+  🧹 Faxina CLI — Lixeiro Inteligente de Projetos
   ─────────────────────────────────────────────
 
   📦 3 projetos inativos encontrados (3 pastas, 15.0 MB)

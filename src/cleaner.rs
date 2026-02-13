@@ -13,8 +13,6 @@ pub struct CleanResult {
     pub errors: Vec<(PathBuf, io::Error)>,
 }
 
-/// Remove as pastas de dependência dos projetos listados.
-/// Se `dry_run` for `true`, apenas simula a remoção sem deletar nada.
 pub fn clean_projects(projects: &[StaleProject], dry_run: bool, verbose: bool) -> CleanResult {
     let total_dirs: usize = projects.iter().map(|p| p.dep_dirs.len()).sum();
 

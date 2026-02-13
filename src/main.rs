@@ -10,35 +10,24 @@ use clap::Parser;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 
-/// 🧹 Lixeiro Inteligente — Limpa pastas de dependências de projetos inativos.
-///
-/// Varre recursivamente um diretório de projetos e remove node_modules,
-/// target (Rust) e .next (Next.js) de projetos que não foram modificados
-/// há mais de N dias.
 #[derive(Parser, Debug)]
-#[command(name = "limpador", version, about, long_about = None)]
+#[command(name = "faxina-cli", version, about, long_about = None)]
 struct Cli {
-    /// Diretório raiz para varrer (default: diretório atual)
     #[arg(default_value = ".")]
     path: PathBuf,
 
-    /// Dias de inatividade para considerar um projeto como "inativo"
     #[arg(short, long, default_value_t = 30)]
     days: u64,
 
-    /// Simular sem deletar nada (mostra o que seria removido)
     #[arg(long)]
     dry_run: bool,
 
-    /// Pular confirmação interativa
     #[arg(short, long)]
     yes: bool,
 
-    /// Mostrar caminhos completos durante a limpeza
     #[arg(short, long)]
     verbose: bool,
 
-    /// Suprimir detalhes, mostrar apenas o total
     #[arg(short, long)]
     quiet: bool,
 }

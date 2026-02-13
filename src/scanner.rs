@@ -5,7 +5,6 @@ use std::time::{Duration, SystemTime};
 
 use walkdir::WalkDir;
 
-/// Tipo de pasta de dependência.
 #[derive(Debug, Clone)]
 pub enum DepKind {
     NodeModules,
@@ -29,7 +28,6 @@ impl std::fmt::Display for DepKind {
     }
 }
 
-/// Uma pasta de dependência encontrada num projeto.
 #[derive(Debug, Clone)]
 pub struct DepDir {
     pub path: PathBuf,
@@ -37,7 +35,6 @@ pub struct DepDir {
     pub kind: DepKind,
 }
 
-/// Um projeto considerado "inativo" com suas pastas de dependência.
 #[derive(Debug, Clone)]
 pub struct StaleProject {
     pub name: String,
@@ -112,8 +109,6 @@ fn is_gradle_build(build_path: &Path) -> bool {
     false
 }
 
-/// Retorna o mtime mais recente dos arquivos-fonte de um projeto,
-/// ignorando pastas de dependências e `.git`.
 fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
     let skip_dirs: Vec<&str> = vec![
         "node_modules", "target", ".next", "dist", "build",
@@ -177,7 +172,6 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
     latest
 }
 
-/// Varre recursivamente `root` e retorna projetos inativos há `days` dias.
 pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
     let threshold = SystemTime::now() - Duration::from_secs(days * 24 * 3600);
     let mut project_deps: HashMap<PathBuf, Vec<DepDir>> = HashMap::new();
@@ -350,8 +344,8 @@ mod tests {
     fn test_dir_size() {
         let dir = make_temp_dir().join("size_test");
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("a.txt"), "hello").unwrap(); // 5 bytes
-        fs::write(dir.join("b.txt"), "world!").unwrap(); // 6 bytes
+        fs::write(dir.join("a.txt"), "hello").unwrap();
+        fs::write(dir.join("b.txt"), "world!").unwrap();
         assert_eq!(dir_size(&dir), 11);
         fs::remove_dir_all(&dir).unwrap();
     }
