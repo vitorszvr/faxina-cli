@@ -54,6 +54,7 @@ impl StaleProject {
 
 fn dir_size(path: &Path) -> u64 {
     WalkDir::new(path)
+        .follow_links(false)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
@@ -153,6 +154,7 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
     }
 
     for entry in WalkDir::new(project_dir)
+        .follow_links(false)
         .into_iter()
         .filter_entry(|e| {
             let name = e.file_name().to_string_lossy();
@@ -180,7 +182,7 @@ pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
     let threshold = SystemTime::now() - Duration::from_secs(days * 24 * 3600);
     let mut project_deps: HashMap<PathBuf, Vec<DepDir>> = HashMap::new();
 
-    let mut it = WalkDir::new(root).into_iter();
+    let mut it = WalkDir::new(root).follow_links(false).into_iter();
 
     while let Some(entry) = it.next() {
         let entry = match entry {
