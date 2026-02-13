@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-use walkdir::WalkDir;
+use jwalk::WalkDir;
 
 #[derive(Debug, Clone)]
 pub enum DepKind {
@@ -51,6 +52,7 @@ impl StaleProject {
 
 fn dir_size(path: &Path) -> u64 {
     WalkDir::new(path)
+        .skip_hidden(false)
         .follow_links(false)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -148,7 +150,15 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
         }
     }
 
-    for entry in WalkDir::new(project_dir)
+    /*
+     * Usando walkdir aqui ainda faz sentido pois é uma varredura *dentro* de um projeto já identificado,
+     * que geralmente não é gigante. Mas podemos migrar para jwalk se necessário.
+     * Por enquanto, mantendo walkdir SOMENTE aqui para não mudar muitas dependências de uma vez,
+     * mas como o scanner principal agora é jwalk, o impacto é menor.
+     *
+     * IMPORTANTE: A função dir_size já foi migrada para jwalk acima.
+     */
+     for entry in walkdir::WalkDir::new(project_dir)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| {
@@ -174,68 +184,81 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
 
 pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
     let threshold = SystemTime::now() - Duration::from_secs(days * 24 * 3600);
-    let mut project_deps: HashMap<PathBuf, Vec<DepDir>> = HashMap::new();
+    
+    // Mutex para coletar resultados de threads paralelas
+    let project_deps: Arc<Mutex<HashMap<PathBuf, Vec<DepDir>>>> = Arc::new(Mutex::new(HashMap::new()));
+    
+    // Configuração do jwalk para pular .git nativamente e varrer paralelo
+    WalkDir::new(root)
+        .skip_hidden(false) 
+        .follow_links(false)
+        .process_read_dir(move |_depth, _path, _read_dir_state, children| {
+            // Filtro customizado para pular diretórios irrelevantes
+            children.retain(|dir_entry_result| {
+                dir_entry_result.as_ref().map(|entry| {
+                    let name = entry.file_name().to_string_lossy();
+                    name != ".git"
+                }).unwrap_or(false)
+            });
+        })
+        .into_iter()
+        .for_each(|entry| {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => return,
+            };
 
-    let mut it = WalkDir::new(root).follow_links(false).into_iter();
+            if !entry.file_type().is_dir() {
+                return;
+            }
 
-    while let Some(entry) = it.next() {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
+            let dir_name = entry.file_name().to_string_lossy();
+            let dir_path = entry.path();
+            
+            // Lógica de detecção
+            let dep = match dir_name.as_ref() {
+                "node_modules" if is_node_project(&dir_path) => {
+                    Some((DepKind::NodeModules, dir_path.clone()))
+                }
+                "target" if is_rust_target(&dir_path) => {
+                    Some((DepKind::Target, dir_path.clone()))
+                }
+                ".next" if is_next_project(&dir_path) => {
+                    Some((DepKind::NextBuild, dir_path.clone()))
+                }
+                "venv" | ".venv" if is_python_venv(&dir_path) => {
+                    Some((DepKind::Venv, dir_path.clone()))
+                }
+                "vendor" if is_go_vendor(&dir_path) => {
+                    Some((DepKind::Vendor, dir_path.clone()))
+                }
+                "build" if is_gradle_build(&dir_path) => {
+                    Some((DepKind::Build, dir_path.clone()))
+                }
+                _ => None,
+            };
 
-        if !entry.file_type().is_dir() {
-            continue;
-        }
-
-        let dir_name = entry.file_name().to_string_lossy();
-        let dir_path = entry.path().to_path_buf();
-
-        if dir_name == ".git" {
-            it.skip_current_dir();
-            continue;
-        }
-
-        let dep = match dir_name.as_ref() {
-            "node_modules" if is_node_project(&dir_path) => {
-                Some((DepKind::NodeModules, dir_path.clone()))
+            if let Some((kind, dep_path)) = dep {
+                if let Some(parent) = dep_path.parent() {
+                    let mut map = project_deps.lock().unwrap();
+                    map
+                        .entry(parent.to_path_buf())
+                        .or_default()
+                        .push(DepDir {
+                            path: dep_path,
+                            size: 0,
+                            kind,
+                        });
+                }
             }
-            "target" if is_rust_target(&dir_path) => {
-                Some((DepKind::Target, dir_path.clone()))
-            }
-            ".next" if is_next_project(&dir_path) => {
-                Some((DepKind::NextBuild, dir_path.clone()))
-            }
-            "venv" | ".venv" if is_python_venv(&dir_path) => {
-                Some((DepKind::Venv, dir_path.clone()))
-            }
-            "vendor" if is_go_vendor(&dir_path) => {
-                Some((DepKind::Vendor, dir_path.clone()))
-            }
-            "build" if is_gradle_build(&dir_path) => {
-                Some((DepKind::Build, dir_path.clone()))
-            }
-            _ => None,
-        };
-
-        if let Some((kind, dep_path)) = dep {
-            if let Some(parent) = dep_path.parent() {
-                project_deps
-                    .entry(parent.to_path_buf())
-                    .or_default()
-                    .push(DepDir {
-                        path: dep_path,
-                        size: 0,
-                        kind,
-                    });
-            }
-            it.skip_current_dir();
-        }
-    }
+        });
 
     let mut stale: Vec<StaleProject> = Vec::new();
 
-    for (project_path, mut deps) in project_deps {
+    // Consumir o mapa coletado
+    let map = Arc::try_unwrap(project_deps).unwrap().into_inner().unwrap();
+
+    for (project_path, mut deps) in map {
         let last_modified = match latest_source_mtime(&project_path) {
             Some(t) => t,
             None => continue,
@@ -245,6 +268,7 @@ pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
             continue;
         }
 
+        // Calcular tamanho das dependências (agora usando jwalk no dir_size tbm)
         for dep in &mut deps {
             dep.size = dir_size(&dep.path);
         }
