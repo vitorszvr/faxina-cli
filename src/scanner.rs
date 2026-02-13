@@ -72,12 +72,16 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
     latest
 }
 
-pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
+pub fn scan_projects<F>(root: &Path, days: u64, on_progress: Option<F>) -> Vec<StaleProject>
+where
+    F: Fn() + Send + Sync + 'static,
+{
     let threshold = SystemTime::now() - Duration::from_secs(days * 24 * 3600);
     let project_types = all_project_types();
     
     // Mutex para coletar resultados de threads paralelas
     let project_deps: Arc<Mutex<HashMap<PathBuf, Vec<DepDir>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let on_progress = Arc::new(on_progress);
     
     WalkDir::new(root)
         .skip_hidden(false) 
@@ -92,6 +96,10 @@ pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
         })
         .into_iter()
         .for_each(|entry| {
+            if let Some(cb) = on_progress.as_ref() {
+                cb();
+            }
+
             let entry = match entry {
                 Ok(e) => e,
                 Err(_) => return,
@@ -162,4 +170,53 @@ pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
 
     stale.sort_by(|a, b| b.total_size().cmp(&a.total_size()));
     stale
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn make_temp_dir() -> PathBuf {
+        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!(
+            "limpador_scan_test_{}_{}", std::process::id(), id
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_scan_projects_integration() {
+        let root = make_temp_dir();
+        let proj1 = root.join("proj_node");
+        fs::create_dir_all(proj1.join("node_modules")).unwrap();
+        fs::write(proj1.join("package.json"), "{}").unwrap();
+        
+        // Simula um callback
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = counter.clone();
+        
+        // Data de modificação antiga para ser considerado stale
+        // Mas o dir_size pode falhar se não tiver arquivos. Vamos criar arquivos.
+        fs::write(proj1.join("node_modules/lib.js"), "content").unwrap();
+
+        // Para testar stale, precisamos manipular mtime, mas latest_source_mtime lê mtime.
+        // Se acabamos de criar, é recente. scan_projects(..., 0) varre tudo (0 dias).
+        
+        let projects = scan_projects(&root, 0, Some(move || {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].name, "proj_node");
+        assert!(counter.load(Ordering::SeqCst) > 0);
+        
+        fs::remove_dir_all(root).unwrap();
+    }
 }

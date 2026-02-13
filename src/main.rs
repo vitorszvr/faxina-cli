@@ -1,3 +1,4 @@
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 mod types;
 mod projects;
 mod cleaner;
@@ -78,7 +79,25 @@ fn main() {
         ));
     }
 
-    let projects = scanner::scan_projects(&root, cli.days);
+    let progress_spinner = spinner.clone();
+    let root_display = root.display().to_string();
+    let days_display = cli.days.to_string();
+    let checked_files = Arc::new(AtomicUsize::new(0));
+    let checked_files_clone = checked_files.clone();
+
+    let on_progress = move || {
+        let count = checked_files_clone.fetch_add(1, Ordering::Relaxed);
+        if count % 500 == 0 {
+            progress_spinner.set_message(format!(
+                "Varrendo {} (projetos inativos há {}+ dias)... {} arquivos",
+                root_display.bold(),
+                days_display.bold(),
+                count.to_string().dimmed()
+            ));
+        }
+    };
+
+    let projects = scanner::scan_projects(&root, cli.days, Some(on_progress));
     spinner.finish_and_clear();
 
     if projects.is_empty() {
