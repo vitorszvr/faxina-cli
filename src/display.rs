@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::time::SystemTime;
 
 use colored::Colorize;
@@ -113,6 +114,15 @@ pub fn confirm_cleanup(dry_run: bool) -> bool {
         );
         println!();
         return true;
+    }
+
+    if !std::io::stdin().is_terminal() {
+        eprintln!(
+            "  {} Stdin não é interativo. Use a flag {} para pular confirmação.",
+            "✗".red().bold(),
+            "--yes".bold()
+        );
+        return false;
     }
 
     Confirm::new()
