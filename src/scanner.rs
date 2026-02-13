@@ -11,6 +11,9 @@ pub enum DepKind {
     NodeModules,
     Target,
     NextBuild,
+    Venv,
+    Vendor,
+    Build,
 }
 
 impl std::fmt::Display for DepKind {
@@ -19,6 +22,9 @@ impl std::fmt::Display for DepKind {
             DepKind::NodeModules => write!(f, "node_modules"),
             DepKind::Target => write!(f, "target"),
             DepKind::NextBuild => write!(f, ".next"),
+            DepKind::Venv => write!(f, "venv"),
+            DepKind::Vendor => write!(f, "vendor"),
+            DepKind::Build => write!(f, "build"),
         }
     }
 }
@@ -84,10 +90,34 @@ fn is_next_project(next_path: &Path) -> bool {
     false
 }
 
+fn is_python_venv(venv_path: &Path) -> bool {
+    venv_path.join("pyvenv.cfg").exists()
+        || venv_path.join("bin/python").exists()
+        || venv_path.join("Scripts/python.exe").exists()
+}
+
+fn is_go_vendor(vendor_path: &Path) -> bool {
+    vendor_path
+        .parent()
+        .map(|p| p.join("go.mod").exists())
+        .unwrap_or(false)
+}
+
+fn is_gradle_build(build_path: &Path) -> bool {
+    if let Some(parent) = build_path.parent() {
+        return parent.join("build.gradle").exists()
+            || parent.join("build.gradle.kts").exists();
+    }
+    false
+}
+
 /// Retorna o mtime mais recente dos arquivos-fonte de um projeto,
 /// ignorando pastas de dependências e `.git`.
 fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
-    let skip_dirs: Vec<&str> = vec!["node_modules", "target", ".next", "dist", "build", ".git"];
+    let skip_dirs: Vec<&str> = vec![
+        "node_modules", "target", ".next", "dist", "build",
+        ".git", "venv", ".venv", "vendor",
+    ];
     let mut latest: Option<SystemTime> = None;
 
     let config_files = [
@@ -101,6 +131,13 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
         "next.config.js",
         "next.config.mjs",
         "next.config.ts",
+        "requirements.txt",
+        "setup.py",
+        "pyproject.toml",
+        "go.mod",
+        "go.sum",
+        "build.gradle",
+        "build.gradle.kts",
     ];
 
     for f in &config_files {
@@ -172,6 +209,15 @@ pub fn scan_projects(root: &Path, days: u64) -> Vec<StaleProject> {
             }
             ".next" if is_next_project(&dir_path) => {
                 Some((DepKind::NextBuild, dir_path.clone()))
+            }
+            "venv" | ".venv" if is_python_venv(&dir_path) => {
+                Some((DepKind::Venv, dir_path.clone()))
+            }
+            "vendor" if is_go_vendor(&dir_path) => {
+                Some((DepKind::Vendor, dir_path.clone()))
+            }
+            "build" if is_gradle_build(&dir_path) => {
+                Some((DepKind::Build, dir_path.clone()))
             }
             _ => None,
         };

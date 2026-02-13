@@ -87,6 +87,9 @@ pub fn print_scan_results(projects: &[StaleProject]) {
                 crate::scanner::DepKind::NodeModules => "📦",
                 crate::scanner::DepKind::Target => "🦀",
                 crate::scanner::DepKind::NextBuild => "▲ ",
+                crate::scanner::DepKind::Venv => "🐍",
+                crate::scanner::DepKind::Vendor => "📁",
+                crate::scanner::DepKind::Build => "🏗️",
             };
             println!(
                 "    {} {} {}",
