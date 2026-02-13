@@ -15,7 +15,7 @@ pub struct CleanResult {
 
 /// Remove as pastas de dependência dos projetos listados.
 /// Se `dry_run` for `true`, apenas simula a remoção sem deletar nada.
-pub fn clean_projects(projects: &[StaleProject], dry_run: bool) -> CleanResult {
+pub fn clean_projects(projects: &[StaleProject], dry_run: bool, verbose: bool) -> CleanResult {
     let total_dirs: usize = projects.iter().map(|p| p.dep_dirs.len()).sum();
 
     let pb = ProgressBar::new(total_dirs as u64);
@@ -36,6 +36,10 @@ pub fn clean_projects(projects: &[StaleProject], dry_run: bool) -> CleanResult {
     for project in projects {
         for dep in &project.dep_dirs {
             pb.set_message(format!("removendo {}", dep.kind));
+
+            if verbose {
+                pb.println(format!("    → {}", dep.path.display()));
+            }
 
             if dry_run {
                 result.total_freed += dep.size;

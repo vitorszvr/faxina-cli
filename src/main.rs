@@ -33,6 +33,14 @@ struct Cli {
     /// Pular confirmação interativa
     #[arg(short, long)]
     yes: bool,
+
+    /// Mostrar caminhos completos durante a limpeza
+    #[arg(short, long)]
+    verbose: bool,
+
+    /// Suprimir detalhes, mostrar apenas o total
+    #[arg(short, long)]
+    quiet: bool,
 }
 
 fn main() {
@@ -60,7 +68,9 @@ fn main() {
         process::exit(1);
     }
 
-    display::print_header();
+    if !cli.quiet {
+        display::print_header();
+    }
 
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(
@@ -68,22 +78,28 @@ fn main() {
             .unwrap()
             .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "),
     );
-    spinner.enable_steady_tick(Duration::from_millis(80));
-    spinner.set_message(format!(
-        "Varrendo {} (projetos inativos há {}+ dias)...",
-        root.display().to_string().bold(),
-        cli.days.to_string().bold()
-    ));
+    if !cli.quiet {
+        spinner.enable_steady_tick(Duration::from_millis(80));
+        spinner.set_message(format!(
+            "Varrendo {} (projetos inativos há {}+ dias)...",
+            root.display().to_string().bold(),
+            cli.days.to_string().bold()
+        ));
+    }
 
     let projects = scanner::scan_projects(&root, cli.days);
     spinner.finish_and_clear();
 
     if projects.is_empty() {
-        display::print_no_stale_projects(cli.days);
+        if !cli.quiet {
+            display::print_no_stale_projects(cli.days);
+        }
         return;
     }
 
-    display::print_scan_results(&projects);
+    if !cli.quiet {
+        display::print_scan_results(&projects);
+    }
 
     if !cli.yes {
         if !display::confirm_cleanup(cli.dry_run) {
@@ -93,7 +109,7 @@ fn main() {
             return;
         }
         println!();
-    } else if cli.dry_run {
+    } else if cli.dry_run && !cli.quiet {
         println!(
             "  {}",
             "🔍 Modo dry-run: nenhum arquivo será deletado."
@@ -103,6 +119,6 @@ fn main() {
         println!();
     }
 
-    let result = cleaner::clean_projects(&projects, cli.dry_run);
-    display::print_summary(&result, cli.dry_run);
+    let result = cleaner::clean_projects(&projects, cli.dry_run, cli.verbose);
+    display::print_summary(&result, cli.dry_run, cli.quiet);
 }

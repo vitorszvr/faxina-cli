@@ -132,7 +132,12 @@ pub fn confirm_cleanup(dry_run: bool) -> bool {
         .unwrap_or(false)
 }
 
-pub fn print_summary(result: &CleanResult, dry_run: bool) {
+pub fn print_summary(result: &CleanResult, dry_run: bool, quiet: bool) {
+    if quiet {
+        println!("{}", crate::display::format_size(result.total_freed));
+        return;
+    }
+
     println!();
 
     if dry_run {
