@@ -26,9 +26,16 @@ Desenvolvedores acumulam pastas pesadas de dependências (`node_modules`, `targe
 
 ## Instalação
 
+### Instalação rápida (Linux / macOS)
+
 ```bash
-# Clonar e compilar
-git clone https://github.com/seu-usuario/faxina-cli.git
+curl -fsSL https://raw.githubusercontent.com/vitorszvr/faxina-cli/master/install.sh | bash
+```
+
+### Compilar manualmente
+
+```bash
+git clone https://github.com/vitorszvr/faxina-cli.git
 cd faxina-cli
 cargo build --release
 
