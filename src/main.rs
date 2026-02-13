@@ -6,9 +6,10 @@ mod display;
 mod scanner;
 
 use std::path::PathBuf;
-use std::process;
+
 use std::time::Duration;
 
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -35,29 +36,14 @@ struct Cli {
     quiet: bool,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let root = match cli.path.canonicalize() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!(
-                "  {} Não foi possível acessar '{}': {}",
-                "✗".red().bold(),
-                cli.path.display(),
-                e
-            );
-            process::exit(1);
-        }
-    };
+    let root = cli.path.canonicalize()
+        .with_context(|| format!("Não foi possível acessar '{}'", cli.path.display()))?;
 
     if !root.is_dir() {
-        eprintln!(
-            "  {} '{}' não é um diretório.",
-            "✗".red().bold(),
-            root.display()
-        );
-        process::exit(1);
+        bail!("'{}' não é um diretório.", root.display());
     }
 
     if !cli.quiet {
@@ -104,7 +90,7 @@ fn main() {
         if !cli.quiet {
             display::print_no_stale_projects(cli.days);
         }
-        return;
+        return Ok(());
     }
 
     if !cli.quiet {
@@ -116,7 +102,7 @@ fn main() {
             println!();
             println!("  {} Limpeza cancelada.", "↩".dimmed());
             println!();
-            return;
+            return Ok(());
         }
         println!();
     } else if cli.dry_run && !cli.quiet {
@@ -131,4 +117,6 @@ fn main() {
 
     let result = cleaner::clean_projects(&projects, cli.dry_run, cli.verbose);
     display::print_summary(&result, cli.dry_run, cli.quiet);
+    
+    Ok(())
 }

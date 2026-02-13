@@ -1,5 +1,5 @@
+use anyhow::Error;
 use std::fs;
-use std::io;
 use std::path::PathBuf;
 
 use indicatif::{ProgressBar, ProgressStyle};
@@ -10,7 +10,7 @@ use crate::types::StaleProject;
 pub struct CleanResult {
     pub total_freed: u64,
     pub dirs_removed: usize,
-    pub errors: Vec<(PathBuf, io::Error)>,
+    pub errors: Vec<(PathBuf, Error)>,
 }
 
 pub fn clean_projects(projects: &[StaleProject], dry_run: bool, verbose: bool) -> CleanResult {
@@ -49,7 +49,7 @@ pub fn clean_projects(projects: &[StaleProject], dry_run: bool, verbose: bool) -
                         result.dirs_removed += 1;
                     }
                     Err(e) => {
-                        result.errors.push((dep.path.clone(), e));
+                        result.errors.push((dep.path.clone(), e.into()));
                     }
                 }
             }
