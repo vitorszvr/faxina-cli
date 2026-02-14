@@ -85,6 +85,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.platform.target }}
 
       - name: Upload Binary
+        if: runner.os != 'Windows'
         uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: faxina-cli
@@ -98,7 +99,9 @@ jobs:
 
       - name: Build MSI (Windows)
         if: runner.os == 'Windows'
-        run: cargo wix --no-build --nocapture --output target/wix/faxina-cli.msi --target ${{ matrix.platform.target }}
+        run: |
+          cargo wix --no-build --nocapture --output target/wix/faxina-cli.msi --target ${{ matrix.platform.target }}
+          mv target/wix/faxina-cli.msi target/wix/faxina-cli-Windows-x86_64.msi
         env:
           # Ensure cargo-wix uses the correct target directory
           CARGO_TARGET_DIR: target
@@ -108,4 +111,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} target/wix/faxina-cli.msi --clobber
+          gh release upload ${{ github.ref_name }} target/wix/faxina-cli-Windows-x86_64.msi --clobber
