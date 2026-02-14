@@ -98,7 +98,7 @@ jobs:
 
       - name: Build MSI (Windows)
         if: runner.os == 'Windows'
-        run: cargo wix --no-build --nocapture --output target/wix/faxina-cli.msi
+        run: cargo wix --no-build --nocapture --output target/wix/faxina-cli.msi --target ${{ matrix.platform.target }}
         env:
           # Ensure cargo-wix uses the correct target directory
           CARGO_TARGET_DIR: target
