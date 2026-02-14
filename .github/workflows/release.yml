@@ -49,6 +49,7 @@ jobs:
             bin: faxina-cli.exe
             name: faxina-cli-Windows-x86_64.zip
             command: zip
+            include: install.ps1
 
           - release_for: macOS-x86_64
             os: macos-latest
@@ -89,3 +90,22 @@ jobs:
           bin: faxina-cli
           target: ${{ matrix.platform.target }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          include: ${{ matrix.platform.include }}
+
+      - name: Install cargo-wix (Windows)
+        if: runner.os == 'Windows'
+        run: cargo install cargo-wix
+
+      - name: Build MSI (Windows)
+        if: runner.os == 'Windows'
+        run: cargo wix --no-build --nocapture --output target/wix/faxina-cli.msi
+        env:
+          # Ensure cargo-wix uses the correct target directory
+          CARGO_TARGET_DIR: target
+
+      - name: Upload MSI (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.ref_name }} target/wix/faxina-cli.msi --clobber
