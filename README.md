@@ -26,22 +26,17 @@ Desenvolvedores acumulam pastas pesadas de dependências (`node_modules`, `targe
 
 ## Instalação
 
-### Windows (Instalador MSI)
+### Windows (Comando Único)
 
-Baixe o arquivo `faxina-cli.msi` na aba [Releases](https://github.com/vitorszvr/faxina-cli/releases) e execute-o.
-
-### Windows (Script Alternativo)
-
-Alternativamente, você pode usar o script PowerShell incluído no `.zip`:
+Abra o PowerShell (não o CMD) e rode:
 
 ```powershell
-# 1. Extraia o arquivo baixado
-Expand-Archive faxina-cli-Windows-x86_64.zip
-cd faxina-cli-Windows-x86_64
-
-# 2. Execute o instalador
-.\install.ps1
+iwr -useb https://raw.githubusercontent.com/vitorszvr/faxina-cli/master/install.ps1 | iex
 ```
+
+### Windows (Instalador MSI)
+
+Alternativamente, baixe e instale o arquivo `faxina-cli.msi` na aba [Releases](https://github.com/vitorszvr/faxina-cli/releases).
 
 O script irá:
 

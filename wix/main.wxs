@@ -112,6 +112,9 @@
         <!--<Property Id='ARPPRODUCTICON' Value='ProductICO' />-->
 
         <Property Id='ARPHELPLINK' Value='https://github.com/vitorszvr/faxina-cli'/>
+
+        <UIRef Id="WixUI_Minimal" />
+        <UIRef Id="WixUI_ErrorProgressText" />
         
     </Product>
 

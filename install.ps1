@@ -7,15 +7,41 @@ $AppName = "faxina-cli"
 $InstallDir = "$env:LOCALAPPDATA\faxina-cli"
 $BinName = "faxina-cli.exe"
 $CurrentDir = Get-Location
+$Repo = "vitorszvr/faxina-cli"
 
-# 1. Verificar se o executável existe na pasta atual (instalação via zip baixado)
+# 1. Obter executável (Local ou Download)
 if (Test-Path "$CurrentDir\$BinName") {
     Write-Host "📦 Encontrado $BinName na pasta atual." -ForegroundColor Cyan
     $SourceBin = "$CurrentDir\$BinName"
 } else {
-    Write-Host "❌ $BinName não encontrado na pasta atual." -ForegroundColor Red
-    Write-Host "   Certifique-se de ter extraído todo o conteúdo do arquivo .zip."
-    exit 1
+    Write-Host "☁️  Buscando última versão no GitHub..." -ForegroundColor Cyan
+    try {
+        $Latest = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
+        $Asset = $Latest.assets | Where-Object { $_.name -like "*Windows-x86_64.zip" }
+        
+        if (-not $Asset) {
+            Write-Error "Release Windows não encontrada."
+        }
+
+        $DownloadUrl = $Asset.browser_download_url
+        $ZipPath = "$env:TEMP\faxina-cli.zip"
+        
+        Write-Host "⬇️  Baixando: $($Asset.name)..." -ForegroundColor Cyan
+        Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath
+        
+        Write-Host "📦 Extraindo..." -ForegroundColor Cyan
+        Expand-Archive -Path $ZipPath -DestinationPath "$env:TEMP\faxina-cli-install" -Force
+        
+        # Encontrar o binário extraído
+        $SourceBin = Get-ChildItem -Path "$env:TEMP\faxina-cli-install" -Filter "$BinName" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+        
+        if (-not $SourceBin) {
+            Write-Error "Binário não encontrado dentro do zip."
+        }
+    } catch {
+        Write-Host "❌ Erro ao baixar atualização: $_" -ForegroundColor Red
+        exit 1
+    }
 }
 
 # 2. Criar diretório de instalação
