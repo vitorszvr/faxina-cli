@@ -37,6 +37,12 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    let result = run();
+    pause_on_windows();
+    result
+}
+
+fn run() -> Result<()> {
     let cli = Cli::parse();
 
     let root = cli.path.canonicalize()
@@ -119,4 +125,13 @@ fn main() -> Result<()> {
     display::print_summary(&result, cli.dry_run, cli.quiet);
     
     Ok(())
+}
+
+fn pause_on_windows() {
+    #[cfg(target_os = "windows")]
+    {
+        use std::io::{self, Read};
+        println!("\nPressione Enter para sair...");
+        let _ = io::stdin().read(&mut [0u8]);
+    }
 }
