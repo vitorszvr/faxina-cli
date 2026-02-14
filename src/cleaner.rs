@@ -43,13 +43,13 @@ pub fn clean_projects(projects: &[StaleProject], dry_run: bool, verbose: bool) -
                 result.total_freed += dep.size;
                 result.dirs_removed += 1;
             } else {
-                match fs::remove_dir_all(&dep.path) {
+                match remove_dir_all_with_retry(&dep.path) {
                     Ok(_) => {
                         result.total_freed += dep.size;
                         result.dirs_removed += 1;
                     }
                     Err(e) => {
-                        result.errors.push((dep.path.clone(), e.into()));
+                        result.errors.push((dep.path.clone(), e));
                     }
                 }
             }
@@ -60,4 +60,32 @@ pub fn clean_projects(projects: &[StaleProject], dry_run: bool, verbose: bool) -
 
     pb.finish_and_clear();
     result
+}
+
+fn remove_dir_all_with_retry(path: &std::path::Path) -> Result<(), Error> {
+    #[cfg(not(windows))]
+    {
+        fs::remove_dir_all(path).map_err(|e| e.into())
+    }
+
+    #[cfg(windows)]
+    {
+        use std::thread;
+        use std::time::Duration;
+
+        let mut last_err = None;
+        for i in 0..5 {
+            match fs::remove_dir_all(path) {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    // Se não for a última tentativa, espera
+                    if i < 4 {
+                        thread::sleep(Duration::from_millis(100 * (i + 1)));
+                    }
+                    last_err = Some(e);
+                }
+            }
+        }
+        Err(last_err.unwrap().into())
+    }
 }

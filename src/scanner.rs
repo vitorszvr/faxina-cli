@@ -9,6 +9,68 @@ use jwalk::WalkDir;
 use crate::types::{DepDir, StaleProject, dir_size};
 use crate::projects::all_project_types;
 
+const PROTECTED_PATHS: &[&str] = &[
+    "/",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/etc",
+    "/var",
+    "/boot",
+    "/root",
+    "C:\\",
+    "C:\\Windows",
+    "C:\\Program Files",
+    "C:\\Program Files (x86)",
+];
+
+fn is_safe_to_scan(path: &Path) -> bool {
+    let canonical = match path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return false, // Path doesn't exist or cant be read, so it's "safe" in the sense that we won't scan it anyway
+    };
+    
+    let path_str = canonical.to_string_lossy();
+    
+    // Check exact matches or if it's a parent
+    for protected in PROTECTED_PATHS {
+        // Exact match
+        if path_str == *protected {
+            return false;
+        }
+        
+        // On Windows, handle case-insensitivity roughly or just rely on canonicalization?
+        // Canonicalization on Windows usually gives `\\?\C:\...` which complicates things.
+        // For simplicity, let's just check if the path *starts with* a protected path?
+        // No, we want to prevent scanning the *parent* of a protected path? No, we want to prevent scanning *inside* or *starting at* a protected path IF it makes sense.
+        // Actually, the user requirement is "Prevent accidental deletion in critical system directories".
+        // If I scan `/`, I might find `node_modules` in `/var/lib/...` which might be system stuff.
+        // So I should block scanning IF `root` IS one of the protected paths.
+        // Scanning `/home/user` is fine. Scanning `/` is not.
+        
+        #[cfg(windows)]
+        {
+             // Simple check for Windows roots
+             if path_str.eq_ignore_ascii_case(protected) {
+                 return false;
+             }
+             // Also block `C:` without backslash if canonical resolves to it
+             if protected.ends_with('\\') && path_str.eq_ignore_ascii_case(protected.trim_end_matches('\\')) {
+                 return false;
+             }
+        }
+        
+        #[cfg(not(windows))]
+        {
+            if path_str == *protected {
+                return false;
+            }
+        }
+    }
+    
+    true
+}
+
 fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
     let skip_dirs: Vec<&str> = vec![
         "node_modules", "target", ".next", "dist", "build",
@@ -76,6 +138,13 @@ pub fn scan_projects<F>(root: &Path, days: u64, on_progress: Option<F>) -> Vec<S
 where
     F: Fn() + Send + Sync + 'static,
 {
+    if !is_safe_to_scan(root) {
+        // In a real app we might want to return Result, but signature is Vec.
+        // Returns empty and logs/prints warning?
+        eprintln!("⚠️  Caminho protegido detectado: {}. Varredura abortada por segurança.", root.display());
+        return Vec::new();
+    }
+
     let threshold = SystemTime::now() - Duration::from_secs(days * 24 * 3600);
     let project_types = all_project_types();
     

@@ -89,8 +89,8 @@ pub fn print_scan_results(projects: &[StaleProject]) {
                 DepKind::Target => "🦀",
                 DepKind::NextBuild => "▲ ",
                 DepKind::Venv => "🐍",
-                DepKind::Vendor => "📁",
-                DepKind::Build => "🏗️",
+                DepKind::Vendor => "🐹",
+                DepKind::Build => "☕",
             };
             println!(
                 "    {} {} {}",

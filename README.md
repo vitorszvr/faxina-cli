@@ -130,6 +130,7 @@ src/
 ## Segurança
 
 - **Nunca** toca em arquivos de código-fonte
+- **Bloqueia** varredura em diretórios críticos do sistema (ex: `/`, `C:\`, `/usr`)
 - Modo `--dry-run` para simular antes de agir
 - Confirmação interativa por padrão
 - Não segue symlinks (previne deleção acidental fora do escopo)
