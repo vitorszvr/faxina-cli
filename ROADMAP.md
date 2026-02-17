@@ -10,22 +10,22 @@ Foco em **Segurança** e **Robustez**, especialmente para ambientes Windows.
 
 Prevenir deleções acidentais em diretórios críticos do sistema.
 
-- [ ] Criar lista de `PROTECTED_PATHS` (ex: `/`, `/usr`, `C:\`, `C:\Windows`).
-- [ ] Implementar verificação `is_safe_to_scan(path)` antes de iniciar qualquer operação.
+- [x] Criar lista de `PROTECTED_PATHS` (ex: `/`, `/usr`, `C:\`, `C:\Windows`).
+- [x] Implementar verificação `is_safe_to_scan(path)` antes de iniciar qualquer operação.
 
 ### 🔄 2. Robustez no Windows
 
 O Windows bloqueia arquivos em uso (antivírus, indexação, terminais abertos), o que pode fazer a limpeza falhar.
 
-- [ ] Implementar **Retry Logic** na remoção de diretórios (`remove_with_retry`).
+- [x] Implementar **Retry Logic** na remoção de diretórios (`remove_with_retry`).
 - [ ] Adicionar backoff exponencial (esperar um pouco antes de tentar de novo).
 
 ### ⚙️ 3. Configuração Persistente
 
 Permitir que o usuário salve suas preferências padrão.
 
-- [ ] Suporte a arquivo de configuração global (`~/.faxina-config.toml` ou similar).
-- [ ] Opções suportadas:
+- [x] Suporte a arquivo de configuração global (`~/.faxina-config.toml` ou similar).
+- [x] Opções suportadas:
   - `days` (padrão de dias)
   - `auto_confirm` (para não pedir `y/N` sempre)
   - `excluded_dirs` (pastas para nunca escanear)
