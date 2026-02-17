@@ -80,7 +80,7 @@ fn remove_dir_all_with_retry(path: &std::path::Path) -> Result<(), Error> {
                 Err(e) => {
                     // Se não for a última tentativa, espera
                     if i < 4 {
-                        thread::sleep(Duration::from_millis(100 * (i + 1)));
+                        thread::sleep(Duration::from_millis(100 * 2u64.pow(i as u32)));
                     }
                     last_err = Some(e);
                 }
