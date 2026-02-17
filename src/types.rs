@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use jwalk::WalkDir;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DepKind {
     NodeModules,
     Target,
@@ -10,6 +10,19 @@ pub enum DepKind {
     Venv,
     Vendor,
     Build,
+}
+
+impl DepKind {
+    pub fn icon(&self) -> &'static str {
+        match self {
+            DepKind::NodeModules => "📦",
+            DepKind::Target => "🦀",
+            DepKind::NextBuild => "▲ ",
+            DepKind::Venv => "🐍",
+            DepKind::Vendor => "🐹",
+            DepKind::Build => "☕",
+        }
+    }
 }
 
 impl std::fmt::Display for DepKind {

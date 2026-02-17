@@ -18,7 +18,7 @@ Prevenir deleções acidentais em diretórios críticos do sistema.
 O Windows bloqueia arquivos em uso (antivírus, indexação, terminais abertos), o que pode fazer a limpeza falhar.
 
 - [x] Implementar **Retry Logic** na remoção de diretórios (`remove_with_retry`).
-- [ ] Adicionar backoff exponencial (esperar um pouco antes de tentar de novo).
+- [x] Adicionar backoff exponencial (esperar um pouco antes de tentar de novo).
 
 ### ⚙️ 3. Configuração Persistente
 
@@ -38,7 +38,7 @@ Foco em **Experiência do Usuário (UX)** e **Performance**.
 
 ### 📊 4. Estatísticas e Relatórios
 
-- [ ] Flag `--stats` para mostrar resumo por linguagem (ex: "Rust: 2GB", "Node: 500MB").
+- [x] Flag `--stats` para mostrar resumo por linguagem (ex: "Rust: 2GB", "Node: 500MB").
 - [ ] Identificar e listar qual é o projeto mais antigo/pesado.
 
 ### ⚡ 5. Performance Aprimorada
@@ -48,7 +48,7 @@ Foco em **Experiência do Usuário (UX)** e **Performance**.
 
 ### 🎨 6. UX Polish
 
-- [ ] Ícones específicos por linguagem no terminal (🦀 para Rust, 📦 para Node, etc).
+- [x] Ícones específicos por linguagem no terminal (🦀 para Rust, 📦 para Node, etc).
 - [ ] Modo interativo de seleção (`dialoguer::MultiSelect`): permitir selecionar quais projetos limpar de uma lista.
 
 ---

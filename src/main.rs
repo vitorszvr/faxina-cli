@@ -36,6 +36,9 @@ struct Cli {
 
     #[arg(short, long)]
     quiet: bool,
+
+    #[arg(long)]
+    stats: bool, // Exibe estatísticas e sai sem limpar
 }
 
 fn main() -> Result<()> {
@@ -122,6 +125,13 @@ fn run() -> Result<()> {
         return Ok(());
     }
 
+    if cli.stats {
+        if !cli.quiet {
+            display::print_stats(&projects);
+        }
+        return Ok(());
+    }
+
     if !cli.quiet {
         display::print_scan_results(&projects);
     }
@@ -143,6 +153,8 @@ fn run() -> Result<()> {
         );
         println!();
     }
+
+
 
     let result = cleaner::clean_projects(&projects, cli.dry_run, cli.verbose);
     display::print_summary(&result, cli.dry_run, cli.quiet);

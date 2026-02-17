@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::time::SystemTime;
 
@@ -84,17 +85,9 @@ pub fn print_scan_results(projects: &[StaleProject]) {
         );
 
         for dep in &project.dep_dirs {
-            let kind_icon = match dep.kind {
-                DepKind::NodeModules => "📦",
-                DepKind::Target => "🦀",
-                DepKind::NextBuild => "▲ ",
-                DepKind::Venv => "🐍",
-                DepKind::Vendor => "🐹",
-                DepKind::Build => "☕",
-            };
             println!(
                 "    {} {} {}",
-                kind_icon,
+                dep.kind.icon(),
                 dep.kind.to_string().bold(),
                 format_size(dep.size).red()
             );
@@ -102,6 +95,42 @@ pub fn print_scan_results(projects: &[StaleProject]) {
 
         println!();
     }
+}
+
+pub fn print_stats(projects: &[StaleProject]) {
+    let mut stats: HashMap<DepKind, (usize, u64)> = HashMap::new();
+
+    for project in projects {
+        for dep in &project.dep_dirs {
+            let entry = stats.entry(dep.kind.clone()).or_insert((0, 0));
+            entry.0 += 1;
+            entry.1 += dep.size;
+        }
+    }
+
+    // Convert to vector for sorting
+    let mut stats_vec: Vec<(DepKind, usize, u64)> = stats
+        .into_iter()
+        .map(|(k, (count, size))| (k, count, size))
+        .collect();
+
+    // Sort by size (descending)
+    stats_vec.sort_by(|a, b| b.2.cmp(&a.2));
+
+    println!();
+    println!("  {}", "📊 Estatísticas por Tipo de Projeto:".bold().yellow());
+    println!();
+
+    for (kind, count, size) in stats_vec {
+        println!(
+            "  {} {:<15} {} projetos, {}",
+            kind.icon(),
+            kind.to_string().bold(),
+            count.to_string().bold().cyan(),
+            format_size(size).red()
+        );
+    }
+    println!();
 }
 
 pub fn confirm_cleanup(dry_run: bool) -> bool {
