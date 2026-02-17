@@ -134,7 +134,7 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
     latest
 }
 
-pub fn scan_projects<F>(root: &Path, days: u64, on_progress: Option<F>) -> Vec<StaleProject>
+pub fn scan_projects<F>(root: &Path, days: u64, ignored_paths: &[PathBuf], on_progress: Option<F>) -> Vec<StaleProject>
 where
     F: Fn() + Send + Sync + 'static,
 {
@@ -152,6 +152,9 @@ where
     let project_deps: Arc<Mutex<HashMap<PathBuf, Vec<DepDir>>>> = Arc::new(Mutex::new(HashMap::new()));
     let on_progress = Arc::new(on_progress);
     
+    // Ignored paths shared across threads
+    let ignored_paths_shared: Arc<Vec<PathBuf>> = Arc::new(ignored_paths.to_vec());
+
     WalkDir::new(root)
         .skip_hidden(false) 
         .follow_links(false)
@@ -159,7 +162,17 @@ where
             children.retain(|dir_entry_result| {
                 dir_entry_result.as_ref().map(|entry| {
                     let name = entry.file_name().to_string_lossy();
-                    name != ".git"
+                    if name == ".git" {
+                        return false;
+                    }
+                    
+                    let entry_path = entry.path();
+                    for ignored in ignored_paths_shared.iter() {
+                         if entry_path == *ignored {
+                             return false; 
+                         }
+                    }
+                    true
                 }).unwrap_or(false)
             });
         })
@@ -278,7 +291,7 @@ mod tests {
         // Para testar stale, precisamos manipular mtime, mas latest_source_mtime lê mtime.
         // Se acabamos de criar, é recente. scan_projects(..., 0) varre tudo (0 dias).
         
-        let projects = scan_projects(&root, 0, Some(move || {
+        let projects = scan_projects(&root, 0, &[], Some(move || {
             counter_clone.fetch_add(1, Ordering::SeqCst);
         }));
 

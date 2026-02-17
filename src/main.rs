@@ -4,8 +4,10 @@ mod projects;
 mod cleaner;
 mod display;
 mod scanner;
+mod config;
 
 use std::path::PathBuf;
+use config::Config;
 
 use std::time::Duration;
 
@@ -20,8 +22,8 @@ struct Cli {
     #[arg(default_value = ".")]
     path: PathBuf,
 
-    #[arg(short, long, default_value_t = 30)]
-    days: u64,
+    #[arg(short, long)]
+    days: Option<u64>,
 
     #[arg(long)]
     dry_run: bool,
@@ -48,6 +50,27 @@ fn run() -> Result<()> {
     let root = cli.path.canonicalize()
         .with_context(|| format!("Não foi possível acessar '{}'", cli.path.display()))?;
 
+    let config = Config::load().unwrap_or_else(|e| {
+        if !cli.quiet {
+            eprintln!("⚠️  Falha ao carregar configuração: {}", e);
+        }
+        Config {
+            days: None,
+            excluded_dirs: None,
+            auto_confirm: None,
+        }
+    });
+
+    let days = cli.days.or(config.days).unwrap_or(30);
+    let auto_confirm = cli.yes || config.auto_confirm.unwrap_or(false);
+
+    let ignored_paths: Vec<PathBuf> = config.excluded_dirs
+        .unwrap_or_default()
+        .iter()
+        .map(|p| PathBuf::from(p))
+        .map(|p| if p.is_absolute() { p } else { std::env::current_dir().unwrap_or_default().join(p) })
+        .collect();
+
     if !root.is_dir() {
         bail!("'{}' não é um diretório.", root.display());
     }
@@ -67,13 +90,13 @@ fn run() -> Result<()> {
         spinner.set_message(format!(
             "Varrendo {} (projetos inativos há {}+ dias)...",
             root.display().to_string().bold(),
-            cli.days.to_string().bold()
+            days.to_string().bold()
         ));
     }
 
     let progress_spinner = spinner.clone();
     let root_display = root.display().to_string();
-    let days_display = cli.days.to_string();
+    let days_display = days.to_string();
     let checked_files = Arc::new(AtomicUsize::new(0));
     let checked_files_clone = checked_files.clone();
 
@@ -89,12 +112,12 @@ fn run() -> Result<()> {
         }
     };
 
-    let projects = scanner::scan_projects(&root, cli.days, Some(on_progress));
+    let projects = scanner::scan_projects(&root, days, &ignored_paths, Some(on_progress));
     spinner.finish_and_clear();
 
     if projects.is_empty() {
         if !cli.quiet {
-            display::print_no_stale_projects(cli.days);
+            display::print_no_stale_projects(days);
         }
         return Ok(());
     }
@@ -103,7 +126,7 @@ fn run() -> Result<()> {
         display::print_scan_results(&projects);
     }
 
-    if !cli.yes {
+    if !auto_confirm {
         if !display::confirm_cleanup(cli.dry_run) {
             println!();
             println!("  {} Limpeza cancelada.", "↩".dimmed());
