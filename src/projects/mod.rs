@@ -2,6 +2,7 @@ use std::path::Path;
 use crate::types::DepKind;
 
 pub trait ProjectType: Send + Sync {
+    #[allow(dead_code)]
     fn name(&self) -> &'static str;
     fn dep_kind(&self) -> DepKind;
     

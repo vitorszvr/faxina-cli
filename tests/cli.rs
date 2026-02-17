@@ -5,7 +5,7 @@ use tempfile::TempDir;
 
 #[test]
 fn test_help() {
-    let mut cmd = Command::cargo_bin("faxina-cli").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_faxina-cli"));
     cmd.arg("--help")
         .assert()
         .success()
@@ -15,7 +15,7 @@ fn test_help() {
 #[test]
 fn test_dry_run_no_projects() {
     let temp = TempDir::new().unwrap();
-    let mut cmd = Command::cargo_bin("faxina-cli").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_faxina-cli"));
 
     cmd.arg(temp.path())
         .arg("--days").arg("0")
@@ -43,7 +43,7 @@ fn test_dry_run_with_projects() {
     fs::write(rust_proj.join("Cargo.toml"), "[package]").unwrap();
     fs::write(rust_proj.join("target/debug"), "data").unwrap();
 
-    let mut cmd = Command::cargo_bin("faxina-cli").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_faxina-cli"));
     
     // Executa dry-run
     cmd.arg(root)
@@ -72,7 +72,7 @@ fn test_clean_execution() {
     fs::write(node_proj.join("package.json"), "{}").unwrap();
     
     // Executa limpeza real
-    let mut cmd = Command::cargo_bin("faxina-cli").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_faxina-cli"));
     cmd.arg(root)
         .arg("--days").arg("0")
         .arg("--yes") // Confirma
