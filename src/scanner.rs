@@ -146,7 +146,7 @@ where
     }
 
     let threshold = SystemTime::now() - Duration::from_secs(days * 24 * 3600);
-    let project_types = all_project_types();
+    let project_types = Arc::new(all_project_types());
     
     // Mutex para coletar resultados de threads paralelas
     let project_deps: Arc<Mutex<HashMap<PathBuf, Vec<DepDir>>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -155,25 +155,55 @@ where
     // Ignored paths shared across threads
     let ignored_paths_shared: Arc<Vec<PathBuf>> = Arc::new(ignored_paths.to_vec());
 
+    // Clones para o closure do process_read_dir
+    let project_deps_clone = project_deps.clone();
+    let project_types_clone = project_types.clone();
+    let ignored_paths_clone = ignored_paths_shared.clone();
+
     WalkDir::new(root)
         .skip_hidden(false) 
         .follow_links(false)
         .process_read_dir(move |_depth, _path, _read_dir_state, children| {
             children.retain(|dir_entry_result| {
-                dir_entry_result.as_ref().map(|entry| {
-                    let name = entry.file_name().to_string_lossy();
-                    if name == ".git" {
-                        return false;
+                let entry = match dir_entry_result.as_ref() {
+                    Ok(e) => e,
+                    Err(_) => return false,
+                };
+                
+                let name = entry.file_name().to_string_lossy();
+                if name == ".git" {
+                    return false;
+                }
+                
+                let entry_path = entry.path();
+                for ignored in ignored_paths_clone.iter() {
+                        if entry_path == *ignored {
+                            return false; 
+                        }
+                }
+
+                if entry.file_type().is_dir() {
+                    // Lógica de detecção dinâmica via Traits
+                    // Se for um diretório de dependência, registramos e NÃO entramos nele
+                    for proj_type in project_types_clone.iter() {
+                        if proj_type.is_dependency_dir(&entry_path) {
+                            if let Some(parent) = entry_path.parent() {
+                                let mut map = project_deps_clone.lock().unwrap();
+                                map
+                                    .entry(parent.to_path_buf())
+                                    .or_default()
+                                    .push(DepDir {
+                                        path: entry_path,
+                                        size: 0, // calculado depois
+                                        kind: proj_type.dep_kind(),
+                                    });
+                            }
+                            return false; // Skip recursion!
+                        }
                     }
-                    
-                    let entry_path = entry.path();
-                    for ignored in ignored_paths_shared.iter() {
-                         if entry_path == *ignored {
-                             return false; 
-                         }
-                    }
-                    true
-                }).unwrap_or(false)
+                }
+
+                true
             });
         })
         .into_iter()
@@ -181,45 +211,16 @@ where
             if let Some(cb) = on_progress.as_ref() {
                 cb();
             }
-
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => return,
-            };
-
-            if !entry.file_type().is_dir() {
-                return;
-            }
-
-            let dir_path = entry.path();
-            
-            // Lógica de detecção dinâmica via Traits
-            let mut detected = None;
-            for proj_type in &project_types {
-                 if proj_type.is_dependency_dir(&dir_path) {
-                     detected = Some(proj_type.dep_kind());
-                     break;
-                 }
-            }
-
-            if let Some(kind) = detected {
-                if let Some(parent) = dir_path.parent() {
-                    let mut map = project_deps.lock().unwrap();
-                    map
-                        .entry(parent.to_path_buf())
-                        .or_default()
-                        .push(DepDir {
-                            path: dir_path,
-                            size: 0,
-                            kind,
-                        });
-                }
-            }
+            // A detecção já aconteceu no process_read_dir
+             let _ = entry; 
         });
 
     let mut stale: Vec<StaleProject> = Vec::new();
 
-    let map = Arc::try_unwrap(project_deps).unwrap().into_inner().unwrap();
+    let map = {
+        let mut guard = project_deps.lock().unwrap();
+        std::mem::take(&mut *guard)
+    };
 
     for (project_path, mut deps) in map {
         let last_modified = match latest_source_mtime(&project_path) {
