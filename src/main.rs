@@ -39,6 +39,9 @@ struct Cli {
 
     #[arg(long)]
     stats: bool, // Exibe estatísticas e sai sem limpar
+
+    #[arg(short, long)]
+    interactive: bool, // Modo interativo de seleção
 }
 
 fn main() -> Result<()> {
@@ -115,7 +118,7 @@ fn run() -> Result<()> {
         }
     };
 
-    let projects = scanner::scan_projects(&root, days, &ignored_paths, Some(on_progress));
+    let mut projects = scanner::scan_projects(&root, days, &ignored_paths, Some(on_progress));
     spinner.finish_and_clear();
 
     if projects.is_empty() {
@@ -130,6 +133,33 @@ fn run() -> Result<()> {
             display::print_stats(&projects);
         }
         return Ok(());
+    }
+
+    // Modo Interativo
+    if cli.interactive {
+        use dialoguer::{theme::ColorfulTheme, MultiSelect};
+
+        println!();
+        println!("  {}", "Selecione os projetos para limpar (Espaço para selecionar, Enter para confirmar):".bold());
+
+        let project_labels: Vec<String> = projects.iter().map(|p| {
+            let size = p.total_size();
+            let size_str = display::format_size(size);
+            format!("{} ({}) - {}", p.path.display(), size_str, p.dep_dirs.iter().map(|d| d.kind.icon()).collect::<Vec<_>>().join(" "))
+        }).collect();
+
+        let selections = MultiSelect::with_theme(&ColorfulTheme::default())
+            .items(&project_labels)
+            .interact()?;
+
+        if selections.is_empty() {
+             println!();
+             println!("  {} Nenhum projeto selecionado.", "↩".dimmed());
+             println!();
+             return Ok(());
+        }
+
+        projects = selections.into_iter().map(|i| projects[i].clone()).collect();
     }
 
     if !cli.quiet {
