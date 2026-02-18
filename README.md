@@ -69,6 +69,15 @@ faxina-cli
 # Varrer um diretório específico
 limpador ~/Projetos
 
+# Modo Interativo (Selecione quais projetos limpar)
+limpador ~/Projetos --interactive
+
+# Apenas exibir estatísticas (projeto mais pesado, mais antigo)
+limpador ~/Projetos --stats
+
+# Ignorar pastas específicas
+limpador ~/Projetos --excluded-dirs "lixo,temp,backup"
+
 # Alterar o limite de dias de inatividade
 limpador ~/Projetos --days 60
 
@@ -87,13 +96,16 @@ limpador ~/Projetos --quiet --yes
 
 ## Flags
 
-| Flag         | Curta | Descrição                        |
-| ------------ | ----- | -------------------------------- |
-| `--days <N>` | `-d`  | Dias de inatividade (padrão: 30) |
-| `--dry-run`  |       | Simular sem deletar              |
-| `--yes`      | `-y`  | Pular confirmação                |
-| `--verbose`  | `-v`  | Mostrar caminhos completos       |
-| `--quiet`    | `-q`  | Saída mínima                     |
+| Flag              | Curta | Descrição                                       |
+| ----------------- | ----- | ----------------------------------------------- |
+| `--days <N>`      | `-d`  | Dias de inatividade (padrão: 30)                |
+| `--dry-run`       |       | Simular sem deletar                             |
+| `--yes`           | `-y`  | Pular confirmação                               |
+| `--interactive`   | `-i`  | Modo interativo (escolher projetos para limpar) |
+| `--stats`         |       | Exibir apenas estatísticas (tamanho, idade)     |
+| `--excluded-dirs` |       | Lista de pastas a ignorar (ex: `ignored,tmp`)   |
+| `--verbose`       | `-v`  | Mostrar caminhos completos                      |
+| `--quiet`         | `-q`  | Saída mínima                                    |
 
 ## Exemplo de Saída
 
