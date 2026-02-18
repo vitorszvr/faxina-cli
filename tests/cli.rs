@@ -82,3 +82,56 @@ fn test_clean_execution() {
     // Verifica que foi APAGADO
     assert!(!node_proj.join("node_modules").exists());
 }
+
+#[test]
+fn test_stats_flag() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+
+    // Create a dummy project
+    let node_proj = root.join("node-proj");
+    fs::create_dir_all(node_proj.join("node_modules")).unwrap();
+    fs::write(node_proj.join("package.json"), "{}").unwrap();
+    fs::write(node_proj.join("node_modules/lib.js"), "content").unwrap();
+
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_faxina-cli"));
+    cmd.arg(root)
+        .arg("--days").arg("0")
+        .arg("--stats")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("📊 Estatísticas"))
+        .stdout(predicate::str::contains("node_modules    1 projetos"));
+}
+
+#[test]
+fn test_excluded_dirs() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+
+    // Create a project in a "hidden" folder
+    let ignored_dir = root.join("ignored_stuff");
+    fs::create_dir_all(&ignored_dir).unwrap();
+    
+    let node_proj = ignored_dir.join("should_be_ignored");
+    fs::create_dir_all(node_proj.join("node_modules")).unwrap();
+    fs::write(node_proj.join("package.json"), "{}").unwrap();
+
+    // Create a project in a normal folder
+    let normal_proj = root.join("normal_proj");
+    fs::create_dir_all(normal_proj.join("node_modules")).unwrap();
+    fs::write(normal_proj.join("package.json"), "{}").unwrap();
+
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_faxina-cli"));
+    cmd.arg(root)
+        .arg("--days").arg("0")
+        .arg("--excluded-dirs").arg(ignored_dir.to_str().unwrap())
+        .arg("--dry-run")
+        .arg("--yes")
+        .assert()
+        .success()
+        // Should find normal_proj
+        .stdout(predicate::str::contains("normal_proj"))
+        // Should NOT find should_be_ignored
+        .stdout(predicate::str::contains("should_be_ignored").not());
+}

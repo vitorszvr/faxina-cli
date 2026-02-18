@@ -42,6 +42,9 @@ struct Cli {
 
     #[arg(short, long)]
     interactive: bool, // Modo interativo de seleção
+
+    #[arg(long, value_delimiter = ',')]
+    excluded_dirs: Option<Vec<String>>, // Pastas para ignorar (separadas por vírgula)
 }
 
 fn main() -> Result<()> {
@@ -70,10 +73,19 @@ fn run() -> Result<()> {
     let days = cli.days.or(config.days).unwrap_or(30);
     let auto_confirm = cli.yes || config.auto_confirm.unwrap_or(false);
 
-    let ignored_paths: Vec<PathBuf> = config.excluded_dirs
+    let mut ignored_paths: Vec<PathBuf> = config.excluded_dirs
         .unwrap_or_default()
         .iter()
         .map(|p| PathBuf::from(p))
+        .collect();
+
+    if let Some(cli_excludes) = cli.excluded_dirs {
+        for p in cli_excludes {
+            ignored_paths.push(PathBuf::from(p));
+        }
+    }
+
+    let ignored_paths: Vec<PathBuf> = ignored_paths.into_iter()
         .map(|p| if p.is_absolute() { p } else { std::env::current_dir().unwrap_or_default().join(p) })
         .collect();
 
