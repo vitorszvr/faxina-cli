@@ -106,10 +106,17 @@ jobs:
           # Ensure cargo-wix uses the correct target directory
           CARGO_TARGET_DIR: target
 
-      - name: Upload MSI, License and checksum (Windows)
+      - name: Calculate Checksum (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 -Path target\wix\faxina-cli-Windows-x86_64.msi).Hash
+          $hash | Out-File -Encoding ascii -FilePath target\wix\faxina-cli-Windows-x86_64.msi.sha256
+
+      - name: Upload MSI and Checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          powershell -Command "Get-FileHash -Algorithm SHA256 target\\wix\\faxina-cli-Windows-x86_64.msi | ForEach-Object { $_.Hash } | Out-File -Encoding ascii target\\wix\\faxina-cli-Windows-x86_64.msi.sha256"
           gh release upload ${{ github.ref_name }} target/wix/faxina-cli-Windows-x86_64.msi target/wix/faxina-cli-Windows-x86_64.msi.sha256 wix/License.rtf --clobber
