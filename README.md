@@ -138,4 +138,4 @@ src/
 
 ## Licença
 
-MIT
+GPL-3.0

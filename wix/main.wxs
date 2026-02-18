@@ -30,8 +30,7 @@
 
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
 
-  <!-- Aponta para o arquivo RTF de licença usado pela UI do instalador -->
-  <WixVariable Id="WixUILicenseRtf" Value="wix\\License.rtf" />
+
 
     <Product
         Id='*'
@@ -116,8 +115,11 @@
 
         <Property Id='ARPHELPLINK' Value='https://github.com/vitorszvr/faxina-cli'/>
 
+        <!-- Aponta para o arquivo RTF de licença usado pela UI do instalador -->
+        <WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf" />
+
         <!-- Inclui o arquivo RTF como binário no pacote -->
-        <Binary Id='LicenseRtf' SourceFile='wix\\License.rtf' />
+        <Binary Id='LicenseRtf' SourceFile='wix\License.rtf' />
 
         <!-- Usar UI que exponha o diálogo de licença (LicenseAgreementDlg) -->
         <UIRef Id="WixUI_InstallDir" />

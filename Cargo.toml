@@ -1,8 +1,9 @@
 [package]
 name = "faxina-cli"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2021"
 description = "Faxina CLI — Limpa pastas de dependências de projetos inativos"
+license = "GPL-3.0-only"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
