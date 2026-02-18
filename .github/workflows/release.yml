@@ -106,6 +106,37 @@ jobs:
           # Ensure cargo-wix uses the correct target directory
           CARGO_TARGET_DIR: target
 
+      - name: Verify MSI Content (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $msiPath = Resolve-Path "target\wix\faxina-cli-Windows-x86_64.msi"
+          Write-Host "Verifying MSI at: $msiPath"
+
+          $windowsInstaller = New-Object -ComObject WindowsInstaller.Installer
+          $database = $windowsInstaller.OpenDatabase($msiPath.Path, 0)
+          $view = $database.OpenView("SELECT FileName FROM File")
+          $view.Execute()
+
+          $found = $false
+          while ($record = $view.Fetch()) {
+              $fileName = $record.StringData(1)
+              if ($fileName -like "*License.rtf*") {
+                  $found = $true
+                  break
+              }
+          }
+
+          [System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) | Out-Null
+          [System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) | Out-Null
+          [System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($windowsInstaller) | Out-Null
+
+          if (-not $found) {
+              Write-Error "License.rtf not found in MSI!"
+              exit 1
+          }
+          Write-Host "✅ License.rtf found in MSI. Verification passed."
+
       - name: Calculate Checksum (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
