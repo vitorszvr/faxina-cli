@@ -89,3 +89,73 @@ fn remove_dir_all_with_retry(path: &std::path::Path) -> Result<(), Error> {
         Err(last_err.unwrap().into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{DepDir, DepKind};
+    use std::time::SystemTime;
+
+    #[test]
+    fn test_clean_projects_dry_run() {
+        let temp = std::env::temp_dir().join(format!("test_clean_dry_{}", std::process::id()));
+        fs::create_dir_all(&temp).unwrap();
+
+        let dep_path = temp.join("node_modules");
+        fs::create_dir(&dep_path).unwrap();
+
+        let project = StaleProject {
+            name: "test".to_string(),
+            path: temp.clone(),
+            dep_dirs: vec![DepDir {
+                path: dep_path.clone(),
+                size: 100,
+                kind: DepKind::NodeModules,
+            }],
+            last_modified: SystemTime::now(),
+        };
+
+        let result = clean_projects(&[project], true, false);
+
+        assert_eq!(result.total_freed, 100);
+        assert_eq!(result.dirs_removed, 1);
+        assert_eq!(result.errors.len(), 0);
+        
+        // Assert directory STILL EXISTS
+        assert!(dep_path.exists());
+
+        fs::remove_dir_all(&temp).unwrap();
+    }
+
+    #[test]
+    fn test_clean_projects_real() {
+        let temp = std::env::temp_dir().join(format!("test_clean_real_{}", std::process::id()));
+        fs::create_dir_all(&temp).unwrap();
+
+        let dep_path = temp.join("node_modules");
+        fs::create_dir(&dep_path).unwrap();
+
+        let project = StaleProject {
+            name: "test".to_string(),
+            path: temp.clone(),
+            dep_dirs: vec![DepDir {
+                path: dep_path.clone(),
+                size: 200,
+                kind: DepKind::NodeModules,
+            }],
+            last_modified: SystemTime::now(),
+        };
+
+        // Run actual clean
+        let result = clean_projects(&[project], false, false);
+
+        assert_eq!(result.total_freed, 200);
+        assert_eq!(result.dirs_removed, 1);
+        assert_eq!(result.errors.len(), 0);
+        
+        // Assert directory GONE
+        assert!(!dep_path.exists());
+
+        fs::remove_dir_all(&temp).unwrap();
+    }
+}

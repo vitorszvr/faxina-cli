@@ -41,17 +41,17 @@ Foco em **Experiência do Usuário (UX)** e **Performance**.
 ### 📊 4. Estatísticas e Relatórios (médio)
 
 - [x] Flag `--stats` para mostrar resumo por linguagem (ex: "Rust: 2GB", "Node: 500MB").
-- [ ] Identificar e listar qual é o projeto mais antigo/pesado. (prioridade: média)
+- [x] Identificar e listar qual é o projeto mais antigo/pesado. (prioridade: média)
 
 ### ⚡ 5. Performance Aprimorada (médio)
 
-- [ ] Otimizar o cálculo de tamanho (`dir_size`) para diretórios gigantes (amostragem ou `metadata` mais leve). (prioridade: média)
-- [ ] Evitar re-scan de projetos aninhados (detectar se um projeto está dentro de outro já listado). (prioridade: média)
+- [x] Otimizar o cálculo de tamanho (`dir_size`) para diretórios gigantes (amostragem ou `metadata` mais leve). (prioridade: média)
+- [x] Evitar re-scan de projetos aninhados (detectar se um projeto está dentro de outro já listado). (prioridade: média)
 
 ### 🎨 6. UX Polish
 
 - [x] Ícones específicos por linguagem no terminal (🦀 para Rust, 📦 para Node, etc).
-- [ ] Modo interativo de seleção (`dialoguer::MultiSelect`): permitir selecionar quais projetos limpar de uma lista. (prioridade: média)
+- [x] Modo interativo de seleção (`dialoguer::MultiSelect`): permitir selecionar quais projetos limpar de uma lista. (prioridade: média)
 
 ---
 
@@ -62,5 +62,5 @@ Foco em **Experiência do Usuário (UX)** e **Performance**.
 
 Ações recomendadas:
 
-- Priorizar testes automáticos de release (verificar que MSI contém `License.rtf`).
+- [x] Priorizar testes automáticos de release (verificar que MSI contém `License.rtf`).
 - Criar tickets para os itens marcados como média/prioridade e estimar esforço.
