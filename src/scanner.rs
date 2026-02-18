@@ -32,30 +32,25 @@ fn is_safe_to_scan(path: &Path) -> bool {
     
     let path_str = canonical.to_string_lossy();
     
-    // Check exact matches or if it's a parent
+    // Check exact matches or if it's a parent/inside a protected path
     for protected in PROTECTED_PATHS {
         // Exact match
         if path_str == *protected {
             return false;
         }
-        
-        // On Windows, handle case-insensitivity roughly or just rely on canonicalization?
-        // Canonicalization on Windows usually gives `\\?\C:\...` which complicates things.
-        // For simplicity, let's just check if the path *starts with* a protected path?
-        // No, we want to prevent scanning the *parent* of a protected path? No, we want to prevent scanning *inside* or *starting at* a protected path IF it makes sense.
-        // Actually, the user requirement is "Prevent accidental deletion in critical system directories".
-        // If I scan `/`, I might find `node_modules` in `/var/lib/...` which might be system stuff.
-        // So I should block scanning IF `root` IS one of the protected paths.
-        // Scanning `/home/user` is fine. Scanning `/` is not.
-        
+
+        // On Windows
         #[cfg(windows)]
         {
-             // Simple check for Windows roots
              if path_str.eq_ignore_ascii_case(protected) {
                  return false;
              }
-             // Also block `C:` without backslash if canonical resolves to it
              if protected.ends_with('\\') && path_str.eq_ignore_ascii_case(protected.trim_end_matches('\\')) {
+                 return false;
+             }
+             // Check if it is a subdirectory of a protected path
+             // e.g. C:\Windows\System32 should be blocked if C:\Windows is protected
+             if path_str.to_lowercase().starts_with(&protected.to_lowercase()) {
                  return false;
              }
         }
@@ -63,6 +58,12 @@ fn is_safe_to_scan(path: &Path) -> bool {
         #[cfg(not(windows))]
         {
             if path_str == *protected {
+                return false;
+            }
+            // Check if it is a subdirectory of a protected path
+            // e.g. /usr/bin should be blocked if /usr is protected
+            // We need to be careful not to block /usr-foo if /usr is protected, so ensure separator
+            if path_str.starts_with(&format!("{}/", protected)) {
                 return false;
             }
         }
@@ -301,5 +302,28 @@ mod tests {
         assert!(counter.load(Ordering::SeqCst) > 0);
         
         fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn test_is_safe_to_scan() {
+        // Protected paths
+        assert!(!is_safe_to_scan(Path::new("/")));
+        assert!(!is_safe_to_scan(Path::new("/usr")));
+        assert!(!is_safe_to_scan(Path::new("/bin")));
+        
+        // Safe paths
+        let temp = std::env::temp_dir();
+        assert!(is_safe_to_scan(&temp));
+
+        #[cfg(not(windows))]
+        {
+             // /tmp is usually safe, or the temp dir we got above
+        }
+
+        #[cfg(windows)]
+        {
+            assert!(!is_safe_to_scan(Path::new("C:\\")));
+            assert!(!is_safe_to_scan(Path::new("C:\\Windows")));
+            // C:\Users is often protected or critical? Maybe just check temp dir
+        }
     }
 }
