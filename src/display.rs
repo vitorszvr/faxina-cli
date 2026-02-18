@@ -131,6 +131,46 @@ pub fn print_stats(projects: &[StaleProject]) {
         );
     }
     println!();
+
+    // Identify heaviest and oldest
+    let mut heaviest: Option<&StaleProject> = None;
+    let mut oldest: Option<&StaleProject> = None;
+
+    for project in projects {
+        if let Some(h) = heaviest {
+            if project.total_size() > h.total_size() {
+                heaviest = Some(project);
+            }
+        } else {
+            heaviest = Some(project);
+        }
+
+        if let Some(o) = oldest {
+            if project.last_modified < o.last_modified {
+                oldest = Some(project);
+            }
+        } else {
+            oldest = Some(project);
+        }
+    }
+
+    if let Some(h) = heaviest {
+        println!(
+            "  {} Projeto mais pesado: {} ({})", 
+            "🏋️".to_string(),
+            h.name.bold().white(),
+            format_size(h.total_size()).bold().red()
+        );
+    }
+    if let Some(o) = oldest {
+        println!(
+            "  {} Projeto mais antigo: {} ({})", 
+            "👴".to_string(),
+            o.name.bold().white(),
+            days_ago(o.last_modified).bold().yellow()
+        );
+    }
+    println!();
 }
 
 pub fn confirm_cleanup(dry_run: bool) -> bool {
