@@ -67,31 +67,42 @@ cargo build --release
 faxina-cli
 
 # Varrer um diretório específico
-limpador ~/Projetos
+faxina-cli ~/Projetos
 
 # Modo Interativo (Selecione quais projetos limpar)
-limpador ~/Projetos --interactive
+faxina-cli ~/Projetos --interactive
 
 # Apenas exibir estatísticas (projeto mais pesado, mais antigo)
-limpador ~/Projetos --stats
+faxina-cli ~/Projetos --stats
 
 # Ignorar pastas específicas
-limpador ~/Projetos --excluded-dirs "lixo,temp,backup"
+faxina-cli ~/Projetos --excluded-dirs "lixo,temp,backup"
 
 # Alterar o limite de dias de inatividade
-limpador ~/Projetos --days 60
+faxina-cli ~/Projetos --days 60
 
 # Simulação (não deleta nada, só mostra o que faria)
-limpador ~/Projetos --dry-run
+faxina-cli ~/Projetos --dry-run
 
 # Pular confirmação interativa
-limpador ~/Projetos --yes
+faxina-cli ~/Projetos --yes
 
 # Mostrar caminhos completos durante limpeza
-limpador ~/Projetos --verbose
+faxina-cli ~/Projetos --verbose
 
 # Saída mínima (só o total liberado — útil para scripts)
-limpador ~/Projetos --quiet --yes
+faxina-cli ~/Projetos --quiet --yes
+```
+
+## Monorepos e Projetos Aninhados
+
+O **Faxina CLI** possui proteção inteligente para monorepos e projetos aninhados:
+
+1. **Proteção de Filhos**: Se um projeto pai (ex: Monorepo) estiver **ativo** (modificado recentemente), todos os seus subprojetos (ex: `packages/*`) serão preservados, mesmo que não tenham sido tocados. Isso evita quebrar o ambiente de desenvolvimento do monorepo.
+2. **Proteção de Pais**: Se um subprojeto estiver **ativo**, o projeto pai também será preservado.
+
+Isso garante que dependências compartilhadas ou ferramentas de build no nível da raiz não sejam deletadas enquanto você trabalha em um subprojeto específico.
+
 ```
 
 ## Flags
@@ -110,33 +121,37 @@ limpador ~/Projetos --quiet --yes
 ## Exemplo de Saída
 
 ```
-  🧹 Faxina CLI — Lixeiro Inteligente de Projetos
-  ─────────────────────────────────────────────
 
-  📦 3 projetos inativos encontrados (3 pastas, 15.0 MB)
+🧹 Faxina CLI — Lixeiro Inteligente de Projetos
+─────────────────────────────────────────────
 
-  ▸ meu-projeto-rust
-    📂  /home/user/Projetos/meu-projeto-rust
-    🕐  Última modificação: 45 dias atrás
-    🦀 target 10.0 MB
+📦 3 projetos inativos encontrados (3 pastas, 15.0 MB)
 
-  ▸ meu-site-next
-    📂  /home/user/Projetos/meu-site-next
-    🕐  Última modificação: 60 dias atrás
-    📦 node_modules 4.8 MB
-    ▲  .next 200.0 KB
+▸ meu-projeto-rust
+📂 /home/user/Projetos/meu-projeto-rust
+🕐 Última modificação: 45 dias atrás
+🦀 target 10.0 MB
 
-  🗑️  Deseja remover essas pastas de dependência? (y/N)
+▸ meu-site-next
+📂 /home/user/Projetos/meu-site-next
+🕐 Última modificação: 60 dias atrás
+📦 node_modules 4.8 MB
+▲ .next 200.0 KB
+
+🗑️ Deseja remover essas pastas de dependência? (y/N)
+
 ```
 
 ## Arquitetura
 
 ```
+
 src/
-├── main.rs      → CLI (clap), validação de args, orquestração
-├── scanner.rs   → Varredura de projetos, detecção de deps, cálculo de mtime
-├── cleaner.rs   → Deleção de pastas com barra de progresso
-└── display.rs   → Formatação de output, cores, confirmação
+├── main.rs → CLI (clap), validação de args, orquestração
+├── scanner.rs → Varredura de projetos, detecção de deps, cálculo de mtime
+├── cleaner.rs → Deleção de pastas com barra de progresso
+└── display.rs → Formatação de output, cores, confirmação
+
 ```
 
 ## Segurança
@@ -151,3 +166,4 @@ src/
 ## Licença
 
 GPL-3.0
+```
