@@ -10,6 +10,11 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 - **Código**: Refatoração do código de exibição de estatísticas para maior clareza e manutenibilidade.
 - **Configuração**: Adicionado suporte à flag `--config <PATH>` para carregar arquivos de configuração personalizados.
 
+### Fixed
+
+- Windows MSI installer now correctly sets `WIXUI_INSTALLDIR`, fixing error 2819 during installation.
+- Recursive scanning logic updated to correctly handle `.next` directories without skipping them.
+
 ### 🧪 Testes e Qualidade
 
 - Adicionados novos testes cobrindo edge cases no scanner (projetos vazios, dependências que são arquivos).
