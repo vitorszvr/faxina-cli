@@ -28,7 +28,9 @@ fn days_ago(time: SystemTime) -> String {
     match SystemTime::now().duration_since(time) {
         Ok(duration) => {
             let days = duration.as_secs() / (24 * 3600);
-            if days == 1 {
+            if days == 0 {
+                "hoje".to_string()
+            } else if days == 1 {
                 "1 dia atrás".to_string()
             } else {
                 format!("{} dias atrás", days)
@@ -290,6 +292,6 @@ mod tests {
     #[test]
     fn test_days_ago_recent() {
         let now = SystemTime::now();
-        assert_eq!(days_ago(now), "0 dias atrás");
+        assert_eq!(days_ago(now), "hoje");
     }
 }

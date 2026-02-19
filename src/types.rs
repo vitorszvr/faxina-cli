@@ -41,6 +41,8 @@ impl std::fmt::Display for DepKind {
 #[derive(Debug, Clone)]
 pub struct DepDir {
     pub path: PathBuf,
+    /// Tamanho em bytes. Inicializado como `0` pelo scanner — valor real
+    /// preenchido por `scanner::calculate_sizes()` antes de qualquer exibição.
     pub size: u64,
     pub kind: DepKind,
 }

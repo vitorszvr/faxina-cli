@@ -72,13 +72,18 @@ fn remove_dir_all_with_retry(path: &std::path::Path) -> Result<(), Error> {
     {
         use std::thread;
         use std::time::Duration;
+        use std::io::ErrorKind;
 
         let mut last_err = None;
         for i in 0..5 {
             match fs::remove_dir_all(path) {
                 Ok(_) => return Ok(()),
                 Err(e) => {
-                    // Se não for a última tentativa, espera
+                    // Só faz retry para erros de lock (antivírus, processo aberto)
+                    // Outros erros (NotFound, etc.) retornam imediatamente
+                    if e.kind() != ErrorKind::PermissionDenied {
+                        return Err(e.into());
+                    }
                     if i < 4 {
                         thread::sleep(Duration::from_millis(100 * 2u64.pow(i as u32)));
                     }

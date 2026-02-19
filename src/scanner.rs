@@ -149,18 +149,16 @@ where
     let project_deps: Arc<Mutex<HashMap<PathBuf, Vec<DepDir>>>> = Arc::new(Mutex::new(HashMap::new()));
     let on_progress = Arc::new(on_progress);
     
-    // Ignored paths shared across threads
-    let ignored_paths_shared: Arc<Vec<PathBuf>> = Arc::new(ignored_paths.to_vec());
+    // Canonicaliza ignored_paths para comparação consistente
+    let ignored_paths_canonical: Vec<PathBuf> = ignored_paths.iter()
+        .filter_map(|p| p.canonicalize().ok().or_else(|| Some(p.clone())))
+        .collect();
+    let ignored_paths_shared: Arc<Vec<PathBuf>> = Arc::new(ignored_paths_canonical);
 
     // Clones para o closure do process_read_dir
     let project_deps_clone = project_deps.clone();
     let project_types_clone = project_types.clone();
     let ignored_paths_clone = ignored_paths_shared.clone();
-
-    // Cache de projetos já confirmados para evitar re-verificar config files
-    let confirmed_projects: Arc<Mutex<std::collections::HashSet<PathBuf>>> = 
-        Arc::new(Mutex::new(std::collections::HashSet::new()));
-    let confirmed_projects_clone = confirmed_projects.clone();
 
     WalkDir::new(root)
         .skip_hidden(false) 
@@ -195,38 +193,20 @@ where
                 }
 
                 if entry.file_type().is_dir() {
-                    // Verifica se o parent já foi confirmado como projeto
-                    let parent_confirmed = entry_path.parent()
-                        .map(|p| confirmed_projects_clone.lock().unwrap().contains(p))
-                        .unwrap_or(false);
-
                     for proj_type in project_types_clone.iter() {
-                        // Se parent já confirmado, basta checar se o nome do dir 
-                        // corresponde ao tipo (evita re-verificar package.json etc.)
-                        let is_dep = if parent_confirmed {
-                            // Verifica apenas o nome do diretório
-                            let dep_name = proj_type.dep_kind().to_string();
-                            name == dep_name.as_str()
-                        } else {
-                            proj_type.is_dependency_dir(&entry_path)
-                        };
-
-                        if is_dep {
+                        if proj_type.is_dependency_dir(&entry_path) {
                             if let Some(parent) = entry_path.parent() {
-                                let parent_owned = parent.to_path_buf();
                                 let mut map = project_deps_clone.lock().unwrap();
                                 map
-                                    .entry(parent_owned.clone())
+                                    .entry(parent.to_path_buf())
                                     .or_default()
                                     .push(DepDir {
                                         path: entry_path,
-                                        size: 0, // calculado depois
+                                        size: 0, // calculado depois por calculate_sizes()
                                         kind: proj_type.dep_kind(),
                                     });
-                                // Registra o parent como projeto confirmado
-                                confirmed_projects_clone.lock().unwrap().insert(parent_owned);
                             }
-                            return false; // Skip recursion!
+                            return false; // Não desce em diretórios de dependência
                         }
                     }
                 }
@@ -253,10 +233,16 @@ where
     for (project_path, mut deps) in map {
         let last_modified = match latest_source_mtime(&project_path) {
             Some(t) => t,
-            None => continue,
+            None => {
+                eprintln!(
+                    "⚠️  Aviso: não foi possível ler mtime de '{}' — projeto ignorado.",
+                    project_path.display()
+                );
+                continue;
+            }
         };
 
-        if last_modified > threshold {
+        if last_modified >= threshold {
             continue;
         }
 
@@ -330,13 +316,17 @@ mod tests {
         // Para testar stale, precisamos manipular mtime, mas latest_source_mtime lê mtime.
         // Se acabamos de criar, é recente. scan_projects(..., 0) varre tudo (0 dias).
         
-        let projects = scan_projects(&root, 0, &[], Some(move || {
+        let mut projects = scan_projects(&root, 0, &[], Some(move || {
             counter_clone.fetch_add(1, Ordering::SeqCst);
         }));
 
         assert_eq!(projects.len(), 1);
         assert_eq!(projects[0].name, "proj_node");
         assert!(counter.load(Ordering::SeqCst) > 0);
+
+        // Verifica que calculate_sizes preenche os tamanhos corretamente
+        calculate_sizes(&mut projects);
+        assert!(projects[0].total_size() > 0, "total_size() deve ser > 0 após calculate_sizes");
         
         fs::remove_dir_all(root).unwrap();
     }
