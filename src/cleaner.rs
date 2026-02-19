@@ -74,14 +74,20 @@ fn remove_dir_all_with_retry(path: &std::path::Path) -> Result<(), Error> {
         use std::time::Duration;
         use std::io::ErrorKind;
 
+        // ERROR_SHARING_VIOLATION (32) — arquivo em uso por outro processo (ex: antivírus)
+        const ERROR_SHARING_VIOLATION: i32 = 32;
+
         let mut last_err = None;
         for i in 0..5 {
             match fs::remove_dir_all(path) {
                 Ok(_) => return Ok(()),
                 Err(e) => {
-                    // Só faz retry para erros de lock (antivírus, processo aberto)
-                    // Outros erros (NotFound, etc.) retornam imediatamente
-                    if e.kind() != ErrorKind::PermissionDenied {
+                    // Só faz retry para erros de lock:
+                    // - PermissionDenied: acesso negado genérico
+                    // - ERROR_SHARING_VIOLATION (32): arquivo em uso por outro processo
+                    let is_retriable = e.kind() == ErrorKind::PermissionDenied
+                        || e.raw_os_error() == Some(ERROR_SHARING_VIOLATION);
+                    if !is_retriable {
                         return Err(e.into());
                     }
                     if i < 4 {

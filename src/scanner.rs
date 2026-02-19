@@ -143,6 +143,7 @@ where
     }
 
     let threshold = SystemTime::now() - Duration::from_secs(days * 24 * 3600);
+    // Chamado uma vez e compartilhado via Arc entre threads — sem alocação por thread
     let project_types = Arc::new(all_project_types());
     
     // Mutex para coletar resultados de threads paralelas
@@ -171,21 +172,8 @@ where
                 };
                 
                 let name = entry.file_name().to_string_lossy();
-                // Pula diretórios internos de aplicações/configuração
-                // Estes contêm node_modules/target que NÃO são projetos do usuário
-                const SKIP_DIRS: &[&str] = &[
-                    ".git", ".vscode", ".cursor", ".idea", ".eclipse",
-                    ".local", ".cache", ".cargo", ".rustup", ".npm", ".nvm",
-                    ".gradle", ".m2", ".sdkman",
-                    ".config", ".Trash", ".pyenv", ".rbenv",
-                    "Library",  // macOS
-                    "AppData",  // Windows
-                ];
-                if SKIP_DIRS.contains(&name.as_ref()) {
-                    return false;
-                }
-                
                 let entry_path = entry.path();
+
                 for ignored in ignored_paths_clone.iter() {
                         if entry_path == *ignored {
                             return false; 
@@ -193,6 +181,8 @@ where
                 }
 
                 if entry.file_type().is_dir() {
+                    // 1. Primeiro verifica se é diretório de dependência (ex: node_modules, .next, target)
+                    //    Isso DEVE vir antes de SKIP_DIRS para que .next seja registrado corretamente
                     for proj_type in project_types_clone.iter() {
                         if proj_type.is_dependency_dir(&entry_path) {
                             if let Some(parent) = entry_path.parent() {
@@ -208,6 +198,20 @@ where
                             }
                             return false; // Não desce em diretórios de dependência
                         }
+                    }
+
+                    // 2. Pula diretórios internos de aplicações/configuração
+                    //    Estes contêm node_modules/target que NÃO são projetos do usuário
+                    const SKIP_DIRS: &[&str] = &[
+                        ".git", ".next", ".vscode", ".cursor", ".idea", ".eclipse",
+                        ".local", ".cache", ".cargo", ".rustup", ".npm", ".nvm",
+                        ".gradle", ".m2", ".sdkman",
+                        ".config", ".Trash", ".pyenv", ".rbenv",
+                        "Library",  // macOS
+                        "AppData",  // Windows
+                    ];
+                    if SKIP_DIRS.contains(&name.as_ref()) {
+                        return false;
                     }
                 }
 
