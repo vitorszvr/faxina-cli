@@ -136,3 +136,23 @@ fn test_excluded_dirs() {
         // Should NOT find should_be_ignored
         .stdout(predicate::str::contains("should_be_ignored").not());
 }
+
+#[test]
+fn test_input_path_not_found() {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_faxina-cli"));
+    cmd.arg("/path/does/not/exist")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Não foi possível acessar"));
+}
+
+#[test]
+fn test_invalid_days_argument() {
+    let temp = TempDir::new().unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_faxina-cli"));
+    cmd.arg(temp.path())
+        .arg("--days").arg("not_a_number")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid value 'not_a_number'"));
+}

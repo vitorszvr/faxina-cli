@@ -96,4 +96,23 @@ mod tests {
             _ => panic!("Should return NotFound"),
         }
     }
+
+    #[test]
+    fn test_load_from_path_invalid_toml() {
+        let temp_dir = std::env::temp_dir().join(format!("test_config_invalid_{}", std::process::id()));
+        fs::create_dir_all(&temp_dir).unwrap();
+        let config_path = temp_dir.join("config.toml");
+        
+        {
+            let mut f = fs::File::create(&config_path).unwrap();
+            f.write_all(b"days = 'invalid_number'").unwrap(); // String instead of int
+        }
+
+        match Config::load_from_path(&config_path) {
+            Err(ConfigError::ParseError(_, _)) => (), // pass
+            _ => panic!("Should return ParseError"),
+        }
+
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
 }

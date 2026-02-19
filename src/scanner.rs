@@ -380,5 +380,36 @@ mod tests {
             assert!(!is_safe_to_scan(Path::new("C:\\")));
         }
     }
+
+    #[test]
+    fn test_scan_dep_is_file() {
+        let root = make_temp_dir();
+        let proj = root.join("node-proj-file-dep");
+        fs::create_dir_all(&proj).unwrap();
+        fs::write(proj.join("package.json"), "{}").unwrap();
+        
+        // "node_modules" is a file, not a directory. Should be ignored as a dependency.
+        fs::write(proj.join("node_modules"), "not a dir").unwrap();
+
+        let projects = scan_projects(&root, 0, &[], None::<fn()>);
+        assert_eq!(projects.len(), 0, "Project with file as dependency folder should be ignored");
+        
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn test_scan_empty_project_no_deps() {
+        let root = make_temp_dir();
+        let proj = root.join("empty-proj");
+        fs::create_dir_all(&proj).unwrap();
+        fs::write(proj.join("package.json"), "{}").unwrap();
+        
+        // No dependency folder created
+        
+        let projects = scan_projects(&root, 0, &[], None::<fn()>);
+        assert_eq!(projects.len(), 0, "Project with no dependency folders should be ignored");
+
+        fs::remove_dir_all(&root).unwrap();
+    }
 }
 
