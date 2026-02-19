@@ -63,15 +63,32 @@ pub fn clean_projects(projects: &[StaleProject], dry_run: bool, verbose: bool) -
 }
 
 fn remove_dir_all_with_retry(path: &std::path::Path) -> Result<(), Error> {
+    use std::thread;
+    use std::time::Duration;
+
     #[cfg(not(windows))]
     {
-        fs::remove_dir_all(path).map_err(|e| e.into())
+        let mut last_err = None;
+        // Retry up to 3 times for PermissionDenied (common with file indexers/AV on some setups)
+        for i in 0..3 {
+            match fs::remove_dir_all(path) {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    if e.kind() != std::io::ErrorKind::PermissionDenied {
+                        return Err(e.into());
+                    }
+                    if i < 2 {
+                        thread::sleep(Duration::from_millis(100 * 2u64.pow(i as u32)));
+                    }
+                    last_err = Some(e);
+                }
+            }
+        }
+        Err(last_err.unwrap().into())
     }
 
     #[cfg(windows)]
     {
-        use std::thread;
-        use std::time::Duration;
         use std::io::ErrorKind;
 
         // ERROR_SHARING_VIOLATION (32) — arquivo em uso por outro processo (ex: antivírus)
