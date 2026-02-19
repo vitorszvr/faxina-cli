@@ -140,6 +140,23 @@ fn run() -> Result<()> {
         return Ok(());
     }
 
+    // Calcula tamanhos dos diretórios de dependência (fase separada para performance)
+    let size_spinner = ProgressBar::new_spinner();
+    size_spinner.set_style(
+        ProgressStyle::with_template("  {spinner:.green} {msg}")
+            .unwrap()
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "),
+    );
+    if !cli.quiet {
+        size_spinner.enable_steady_tick(Duration::from_millis(80));
+        size_spinner.set_message(format!(
+            "Calculando tamanhos de {} projetos...",
+            projects.len().to_string().bold()
+        ));
+    }
+    scanner::calculate_sizes(&mut projects);
+    size_spinner.finish_and_clear();
+
     if cli.stats {
         if !cli.quiet {
             display::print_stats(&projects);
