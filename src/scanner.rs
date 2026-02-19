@@ -82,47 +82,16 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
         ".git", "venv", ".venv", "vendor",
     ];
 
-    // Reduced overhead: no Arc<Mutex>, just simple iteration
-    let mut latest: Option<SystemTime> = None;
+    let latest = Arc::new(Mutex::new(None::<SystemTime>));
+    let latest_clone = latest.clone();
 
-    for entry in WalkDir::new(project_dir)
-        .skip_hidden(false)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        if entry.file_type().is_dir() {
-            let name = entry.file_name().to_string_lossy();
-            if skip_dirs.contains(&name.as_ref()) {
-                continue; // Should actually use skip_current_dir() if using manual iterator control,
-                          // but jwalk iterator is flattened. 
-                          // NOTE: Ideally we want to prevent descending into skip_dirs.
-                          // But jwalk::WalkDir iterator consumes directories.
-            }
-        } else {
-             if let Ok(meta) = entry.metadata() {
-                if let Ok(mtime) = meta.modified() {
-                    latest = Some(match latest {
-                        Some(current) => current.max(mtime),
-                        None => mtime,
-                    });
-                }
-            }
-        }
-    }
-    
-    // Optimization note: The above iterates everything. 
-    // To properly skip directories in jwalk, we need process_read_dir.
-    // Let's reimplement with process_read_dir for efficiency (don't walk node_modules to find source mtime).
-    
-    let latest_mutex = Arc::new(Mutex::new(None::<SystemTime>));
-    let latest_clone = latest_mutex.clone();
-    
+    // Use process_read_dir to effectively skip descending into ignored directories
+    // avoiding the overhead of walking huge dependency trees just to ignore them later.
     WalkDir::new(project_dir)
         .skip_hidden(false)
         .follow_links(false)
         .process_read_dir(move |_depth, _path, _read_dir_state, children| {
-            // Update latest mtime from files in current dir
+            // 1. Process files in current directory to update mtime
             for entry_result in children.iter() {
                 if let Ok(entry) = entry_result {
                     if !entry.file_type().is_dir() {
@@ -138,8 +107,8 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
                     }
                 }
             }
-            
-            // Filter directories to skip
+
+            // 2. Filter directories to descend into
             children.retain(|dir_entry_result| {
                  dir_entry_result.as_ref().map(|e| {
                     if !e.file_type().is_dir() { return true; }
@@ -151,7 +120,7 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
         .into_iter()
         .for_each(|_| {}); 
 
-    let res = *latest_mutex.lock().unwrap();
+    let res = *latest.lock().unwrap();
     res
 }
 
@@ -283,22 +252,16 @@ where
         }
 
         // Condition 2: Must NOT be inside an Active Root (active parent protects child)
-        let is_child_of_active = active_roots.iter().any(|root| {
-            proj.path.starts_with(root) && &proj.path != root
-        });
-        if is_child_of_active {
-            debug!("Protected child project: {} (Parent {} is active)", proj.path.display(), "...");
+        if let Some(parent_root) = active_roots.iter().find(|root| proj.path.starts_with(root) && &proj.path != *root) {
+            debug!("Protected child project: {} (Parent {} is active)", proj.path.display(), parent_root.display());
             continue;
         }
 
         // Condition 3: Must NOT contain an Active Root (active child protects parent)
         // e.g. Monorepo (Stale) -> Package (Active). don't delete Monorepo node_modules.
-        let contains_active_child = active_roots.iter().any(|root| {
-            root.starts_with(&proj.path) && root != &proj.path
-        });
-         if contains_active_child {
-            debug!("Protected parent project: {} (Child {} is active)", proj.path.display(), "...");
-            continue;
+        if let Some(child_root) = active_roots.iter().find(|root| root.starts_with(&proj.path) && *root != &proj.path) {
+             debug!("Protected parent project: {} (Child {} is active)", proj.path.display(), child_root.display());
+             continue;
         }
 
         let name = proj.path.file_name()

@@ -71,7 +71,7 @@ fn run() -> Result<()> {
             },
             ConfigError::ParseError(path, msg) => {
                 error!("Erro fatal no arquivo de configuração '{}': {}", path.display(), msg);
-                std::process::exit(1);
+                bail!("Erro fatal no arquivo de configuração '{}': {}", path.display(), msg);
             },
             ConfigError::IoError(err) => {
                 error!("Erro de I/O ao ler configuração: {}", err);
