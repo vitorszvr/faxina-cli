@@ -2,6 +2,20 @@
 
 Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 
+## [0.4.2] - 2026-02-19
+
+### ✨ Melhorias e Refatorações
+
+- **Padronização**: Tamanhos de arquivos agora são exibidos consistentemente com 2 casas decimais (KB, MB, GB).
+- **Código**: Refatoração do código de exibição de estatísticas para maior clareza e manutenibilidade.
+- **Configuração**: Adicionado suporte à flag `--config <PATH>` para carregar arquivos de configuração personalizados.
+
+### 🧪 Testes e Qualidade
+
+- Adicionados novos testes cobrindo edge cases no scanner (projetos vazios, dependências que são arquivos).
+- Cobertura de erros de configuração inválida (TOML malformado).
+- Validação aprimorada de entradas da CLI (caminhos inexistentes, argumentos numéricos inválidos).
+
 ## [0.2.0] - 2026-02-12
 
 ### 🚀 Novidades
