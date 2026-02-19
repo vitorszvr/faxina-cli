@@ -205,9 +205,10 @@ pub fn confirm_cleanup(dry_run: bool) -> bool {
 
 pub fn print_summary(result: &CleanResult, dry_run: bool, quiet: bool) {
     if quiet {
-        println!("{}", crate::display::format_size(result.total_freed));
+        println!("{}", format_size(result.total_freed));
         return;
     }
+
 
     println!();
 

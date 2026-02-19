@@ -1,7 +1,27 @@
-use anyhow::{Context, Result};
+use std::path::PathBuf;
 use directories::ProjectDirs;
 use serde::Deserialize;
 use std::fs;
+use std::fmt;
+
+#[derive(Debug)]
+pub enum ConfigError {
+    NotFound,
+    ParseError(PathBuf, String),
+    IoError(std::io::Error),
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConfigError::NotFound => write!(f, "Arquivo de configuração não encontrado"),
+            ConfigError::ParseError(path, msg) => write!(f, "Erro de sintaxe no arquivo '{}': {}", path.display(), msg),
+            ConfigError::IoError(err) => write!(f, "Erro de I/O: {}", err),
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -11,29 +31,27 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load() -> Result<Self> {
+    pub fn load() -> Result<Self, ConfigError> {
         let proj_dirs = ProjectDirs::from("", "", "faxina-cli")
-            .context("Não foi possível determinar o diretório de configuração do sistema")?;
+            .ok_or_else(|| ConfigError::IoError(std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found")))?;
             
         let config_path = proj_dirs.config_dir().join("config.toml");
         Self::load_from_path(config_path)
     }
 
-    pub fn load_from_path<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
+    pub fn load_from_path<P: AsRef<std::path::Path>>(path: P) -> Result<Self, ConfigError> {
         let path = path.as_ref();
         if !path.exists() {
-             return Ok(Config {
-                days: None,
-                excluded_dirs: None,
-                auto_confirm: None,
-            });
+             return Err(ConfigError::NotFound);
         }
 
         let content = fs::read_to_string(path)
-            .with_context(|| format!("Falha ao ler arquivo de configuração: {}", path.display()))?;
+            .map_err(ConfigError::IoError)?;
             
-        toml::from_str(&content)
-            .with_context(|| format!("Falha ao fazer parse do config: {}", path.display()))
+        match toml::from_str(&content) {
+            Ok(c) => Ok(c),
+            Err(e) => Err(ConfigError::ParseError(path.to_path_buf(), e.to_string())),
+        }
     }
 }
 
@@ -71,12 +89,11 @@ mod tests {
     #[test]
     fn test_load_from_path_missing() {
         let temp_dir = std::env::temp_dir().join(format!("test_config_missing_{}", std::process::id()));
-        // Ensure dir doesn't exist or file doesn't
         let config_path = temp_dir.join("non_existent.toml");
         
-        let config = Config::load_from_path(&config_path).unwrap();
-        assert!(config.days.is_none());
-        
-        // Cleanup not needed if we didn't create
+        match Config::load_from_path(&config_path) {
+            Err(ConfigError::NotFound) => (), // pass
+            _ => panic!("Should return NotFound"),
+        }
     }
 }

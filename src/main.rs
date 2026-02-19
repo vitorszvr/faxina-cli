@@ -7,7 +7,7 @@ mod scanner;
 mod config;
 
 use std::path::PathBuf;
-use config::Config;
+use config::{Config, ConfigError};
 
 use std::time::Duration;
 
@@ -15,6 +15,7 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
+use log::{error, debug};
 
 #[derive(Parser, Debug)]
 #[command(name = "faxina-cli", version, about, long_about = None)]
@@ -48,6 +49,7 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let result = run();
     pause_on_windows();
     result
@@ -59,16 +61,24 @@ fn run() -> Result<()> {
     let root = cli.path.canonicalize()
         .with_context(|| format!("Não foi possível acessar '{}'", cli.path.display()))?;
 
-    let config = Config::load().unwrap_or_else(|e| {
-        if !cli.quiet {
-            eprintln!("⚠️  Falha ao carregar configuração: {}", e);
+    // Carrega configuração com tratamento de erro robusto
+    let config = match Config::load() {
+        Ok(c) => c,
+        Err(e) => match e {
+            ConfigError::NotFound => {
+                debug!("Arquivo de configuração não encontrado, usando defaults.");
+                Config { days: None, excluded_dirs: None, auto_confirm: None }
+            },
+            ConfigError::ParseError(path, msg) => {
+                error!("Erro fatal no arquivo de configuração '{}': {}", path.display(), msg);
+                std::process::exit(1);
+            },
+            ConfigError::IoError(err) => {
+                error!("Erro de I/O ao ler configuração: {}", err);
+                Config { days: None, excluded_dirs: None, auto_confirm: None }
+            }
         }
-        Config {
-            days: None,
-            excluded_dirs: None,
-            auto_confirm: None,
-        }
-    });
+    };
 
     let days = cli.days.or(config.days).unwrap_or(30);
     let auto_confirm = cli.yes || config.auto_confirm.unwrap_or(false);
@@ -225,6 +235,8 @@ fn pause_on_windows() {
     #[cfg(target_os = "windows")]
     {
         use std::io::{self, Read};
+        // Só pausa se não for quiet e se for terminal interativo, ou se der erro?
+        // O original pausava sempre. Manter comportamento.
         println!("\nPressione Enter para sair...");
         let _ = io::stdin().read(&mut [0u8]);
     }
