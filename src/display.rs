@@ -16,9 +16,9 @@ pub fn format_size(bytes: u64) -> String {
     if bytes >= GB {
         format!("{:.2} GB", bytes as f64 / GB as f64)
     } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
+        format!("{:.2} MB", bytes as f64 / MB as f64)
     } else if bytes >= KB {
-        format!("{:.0} KB", bytes as f64 / KB as f64)
+        format!("{:.2} KB", bytes as f64 / KB as f64)
     } else {
         format!("{} B", bytes)
     }
@@ -135,26 +135,8 @@ pub fn print_stats(projects: &[StaleProject]) {
     println!();
 
     // Identify heaviest and oldest
-    let mut heaviest: Option<&StaleProject> = None;
-    let mut oldest: Option<&StaleProject> = None;
-
-    for project in projects {
-        if let Some(h) = heaviest {
-            if project.total_size() > h.total_size() {
-                heaviest = Some(project);
-            }
-        } else {
-            heaviest = Some(project);
-        }
-
-        if let Some(o) = oldest {
-            if project.last_modified < o.last_modified {
-                oldest = Some(project);
-            }
-        } else {
-            oldest = Some(project);
-        }
-    }
+    let heaviest = projects.iter().max_by_key(|p| p.total_size());
+    let oldest = projects.iter().min_by_key(|p| p.last_modified);
 
     if let Some(h) = heaviest {
         println!(
@@ -274,14 +256,14 @@ mod tests {
 
     #[test]
     fn test_format_size_kb() {
-        assert_eq!(format_size(1024), "1 KB");
-        assert_eq!(format_size(1536), "2 KB");
+        assert_eq!(format_size(1024), "1.00 KB");
+        assert_eq!(format_size(1536), "1.50 KB");
     }
 
     #[test]
     fn test_format_size_mb() {
-        assert_eq!(format_size(1024 * 1024), "1.0 MB");
-        assert_eq!(format_size(5 * 1024 * 1024), "5.0 MB");
+        assert_eq!(format_size(1024 * 1024), "1.00 MB");
+        assert_eq!(format_size(5 * 1024 * 1024), "5.00 MB");
     }
 
     #[test]

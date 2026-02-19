@@ -46,6 +46,9 @@ struct Cli {
 
     #[arg(long, value_delimiter = ',')]
     excluded_dirs: Option<Vec<String>>, // Pastas para ignorar (separadas por vírgula)
+
+    #[arg(long)]
+    config: Option<PathBuf>, // Arquivo de configuração personalizado
 }
 
 fn main() -> Result<()> {
@@ -62,10 +65,19 @@ fn run() -> Result<()> {
         .with_context(|| format!("Não foi possível acessar '{}'", cli.path.display()))?;
 
     // Carrega configuração com tratamento de erro robusto
-    let config = match Config::load() {
+    let config_result = if let Some(path) = &cli.config {
+        Config::load_from_path(path)
+    } else {
+        Config::load()
+    };
+
+    let config = match config_result {
         Ok(c) => c,
         Err(e) => match e {
             ConfigError::NotFound => {
+                if cli.config.is_some() {
+                    bail!("Arquivo de configuração especificado não encontrado: {}", cli.config.unwrap().display());
+                }
                 debug!("Arquivo de configuração não encontrado, usando defaults.");
                 Config { days: None, excluded_dirs: None, auto_confirm: None }
             },
