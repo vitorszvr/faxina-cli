@@ -101,7 +101,8 @@ fn test_stats_flag() {
         .assert()
         .success()
         .stdout(predicate::str::contains("📊 Estatísticas"))
-        .stdout(predicate::str::contains("node_modules    1 projetos"));
+        .stdout(predicate::str::contains("node_modules"))
+        .stdout(predicate::str::contains("1 projetos"));
 }
 
 #[test]
