@@ -37,12 +37,17 @@ fn is_safe_to_scan(path: &Path) -> bool {
     for protected in PROTECTED_PATHS {
         let protected_path = Path::new(protected);
 
-        // Match exato (case-insensitive no Windows)
+        // Match exato e subdiretórios (case-insensitive no Windows)
         #[cfg(windows)]
         {
             let canon_str = canonical.to_string_lossy().to_lowercase();
             let prot_str = protected.to_lowercase().trim_end_matches('\\').to_string();
-            if canon_str == prot_str || canon_str.starts_with(&format!("{}\\", prot_str)) {
+            // Match exato
+            if canon_str == prot_str {
+                return false;
+            }
+            // Subdiretórios — mas NÃO para roots como C:\ (senão bloqueia tudo)
+            if prot_str.len() > 3 && canon_str.starts_with(&format!("{}\\", prot_str)) {
                 return false;
             }
         }
@@ -168,7 +173,17 @@ where
                 };
                 
                 let name = entry.file_name().to_string_lossy();
-                if name == ".git" {
+                // Pula diretórios internos de aplicações/configuração
+                // Estes contêm node_modules/target que NÃO são projetos do usuário
+                const SKIP_DIRS: &[&str] = &[
+                    ".git", ".vscode", ".cursor", ".idea", ".eclipse",
+                    ".local", ".cache", ".cargo", ".rustup", ".npm", ".nvm",
+                    ".gradle", ".m2", ".sdkman",
+                    ".config", ".Trash", ".pyenv", ".rbenv",
+                    "Library",  // macOS
+                    "AppData",  // Windows
+                ];
+                if SKIP_DIRS.contains(&name.as_ref()) {
                     return false;
                 }
                 
