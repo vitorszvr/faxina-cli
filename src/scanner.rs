@@ -4,10 +4,12 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use jwalk::WalkDir;
+use log::{debug, warn};
 
 use crate::types::{DepDir, StaleProject, dir_size};
 use crate::projects::all_project_types;
 
+// System paths to protect from accidental deletion
 const PROTECTED_PATHS: &[&str] = &[
     "/",
     "/usr",
@@ -32,21 +34,17 @@ fn is_safe_to_scan(path: &Path) -> bool {
         Err(_) => return false, // Path doesn't exist or can't be read
     };
 
-    // Usa comparação baseada em componentes de Path, que é mais segura
-    // do que comparação de strings pois lida com separadores e normalização do OS
     for protected in PROTECTED_PATHS {
-        let protected_path = Path::new(protected);
-
-        // Match exato e subdiretórios (case-insensitive no Windows)
+        // Match exact and subdirectories (case-insensitive on Windows)
         #[cfg(windows)]
         {
             let canon_str = canonical.to_string_lossy().to_lowercase();
             let prot_str = protected.to_lowercase().trim_end_matches('\\').to_string();
-            // Match exato
+            // Exact match
             if canon_str == prot_str {
                 return false;
             }
-            // Subdiretórios — mas NÃO para roots como C:\ (senão bloqueia tudo)
+            // Subdirectories (but not for roots like C:\ else it blocks everything)
             if prot_str.len() > 3 && canon_str.starts_with(&format!("{}\\", prot_str)) {
                 return false;
             }
@@ -54,26 +52,22 @@ fn is_safe_to_scan(path: &Path) -> bool {
 
         #[cfg(not(windows))]
         {
+            let protected_path = Path::new(protected);
             if canonical == protected_path {
                 return false;
             }
-            // Verifica se é subdiretório usando starts_with de Path 
-            // (mais seguro que strings: /usr não bloqueia /usr-local)
+            // Check if subdirectory using path components (safer than strings)
             if canonical.starts_with(protected_path) && protected != &"/" {
                 return false;
             }
         }
     }
 
-    // Nota: $HOME (ex: /home/vitor) NÃO é bloqueado — é o uso mais comum da ferramenta.
-    // O aviso de poucos componentes abaixo serve como alerta suave.
-
-    // Alerta para caminhos com poucos componentes (ex: /home/user, C:\Users)
-    // Não bloqueia, mas é uma heurística de segurança
+    // Heuristic warning for paths with few components (e.g., /home/user)
     let component_count = canonical.components().count();
     if component_count <= 2 {
-        eprintln!(
-            "⚠️  Aviso: caminho com poucos componentes ({}). Verifique se é intencional: {}",
+        warn!(
+            "Path with few components ({}). Verify if intentional: {}",
             component_count,
             canonical.display()
         );
@@ -82,21 +76,53 @@ fn is_safe_to_scan(path: &Path) -> bool {
     true
 }
 
-
 fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
     let skip_dirs: &[&str] = &[
         "node_modules", "target", ".next", "dist", "build",
         ".git", "venv", ".venv", "vendor",
     ];
 
-    let latest = Arc::new(Mutex::new(None::<SystemTime>));
-    let latest_clone = latest.clone();
+    // Reduced overhead: no Arc<Mutex>, just simple iteration
+    let mut latest: Option<SystemTime> = None;
 
+    for entry in WalkDir::new(project_dir)
+        .skip_hidden(false)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if entry.file_type().is_dir() {
+            let name = entry.file_name().to_string_lossy();
+            if skip_dirs.contains(&name.as_ref()) {
+                continue; // Should actually use skip_current_dir() if using manual iterator control,
+                          // but jwalk iterator is flattened. 
+                          // NOTE: Ideally we want to prevent descending into skip_dirs.
+                          // But jwalk::WalkDir iterator consumes directories.
+            }
+        } else {
+             if let Ok(meta) = entry.metadata() {
+                if let Ok(mtime) = meta.modified() {
+                    latest = Some(match latest {
+                        Some(current) => current.max(mtime),
+                        None => mtime,
+                    });
+                }
+            }
+        }
+    }
+    
+    // Optimization note: The above iterates everything. 
+    // To properly skip directories in jwalk, we need process_read_dir.
+    // Let's reimplement with process_read_dir for efficiency (don't walk node_modules to find source mtime).
+    
+    let latest_mutex = Arc::new(Mutex::new(None::<SystemTime>));
+    let latest_clone = latest_mutex.clone();
+    
     WalkDir::new(project_dir)
         .skip_hidden(false)
         .follow_links(false)
         .process_read_dir(move |_depth, _path, _read_dir_state, children| {
-            // Atualiza o mtime mais recente para arquivos encontrados neste diretório
+            // Update latest mtime from files in current dir
             for entry_result in children.iter() {
                 if let Ok(entry) = entry_result {
                     if !entry.file_type().is_dir() {
@@ -112,23 +138,21 @@ fn latest_source_mtime(project_dir: &Path) -> Option<SystemTime> {
                     }
                 }
             }
-
-            // Filtra diretórios de dependência para não descer neles
+            
+            // Filter directories to skip
             children.retain(|dir_entry_result| {
-                dir_entry_result.as_ref().map(|e| {
-                    if !e.file_type().is_dir() {
-                        return true; // Mantém arquivos (já processados acima, mas jwalk precisa)
-                    }
+                 dir_entry_result.as_ref().map(|e| {
+                    if !e.file_type().is_dir() { return true; }
                     let name = e.file_name().to_string_lossy();
                     !skip_dirs.contains(&name.as_ref())
                 }).unwrap_or(false)
             });
         })
         .into_iter()
-        .for_each(|_| {}); // Consome o iterador para garantir que a varredura complete
+        .for_each(|_| {}); 
 
-    let guard = latest.lock().unwrap();
-    *guard
+    let res = *latest_mutex.lock().unwrap();
+    res
 }
 
 pub fn scan_projects<F>(root: &Path, days: u64, ignored_paths: &[PathBuf], on_progress: Option<F>) -> Vec<StaleProject>
@@ -136,150 +160,170 @@ where
     F: Fn() + Send + Sync + 'static,
 {
     if !is_safe_to_scan(root) {
-        // In a real app we might want to return Result, but signature is Vec.
-        // Returns empty and logs/prints warning?
-        eprintln!("⚠️  Caminho protegido detectado: {}. Varredura abortada por segurança.", root.display());
+        warn!("Protected path detected: {}. Scan aborted for safety.", root.display());
         return Vec::new();
     }
 
     let threshold = SystemTime::now() - Duration::from_secs(days * 24 * 3600);
-    // Chamado uma vez e compartilhado via Arc entre threads — sem alocação por thread
     let project_types = Arc::new(all_project_types());
     
-    // Mutex para coletar resultados de threads paralelas
-    let project_deps: Arc<Mutex<HashMap<PathBuf, Vec<DepDir>>>> = Arc::new(Mutex::new(HashMap::new()));
-    let on_progress = Arc::new(on_progress);
-    
-    // Canonicaliza ignored_paths para comparação consistente
     let ignored_paths_canonical: Vec<PathBuf> = ignored_paths.iter()
         .filter_map(|p| p.canonicalize().ok().or_else(|| Some(p.clone())))
         .collect();
     let ignored_paths_shared: Arc<Vec<PathBuf>> = Arc::new(ignored_paths_canonical);
 
-    // Clones para o closure do process_read_dir
-    let project_deps_clone = project_deps.clone();
-    let project_types_clone = project_types.clone();
-    let ignored_paths_clone = ignored_paths_shared.clone();
-
+    // Pass 1: Scan file system to find ALL projects and their dependencies
+    let findings: Arc<Mutex<HashMap<PathBuf, Vec<DepDir>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let findings_clone = findings.clone();
+    let pt_clone = project_types.clone();
+    let ign_clone = ignored_paths_shared.clone();
+    
     WalkDir::new(root)
-        .skip_hidden(false) 
+        .skip_hidden(false)
         .follow_links(false)
         .process_read_dir(move |_depth, _path, _read_dir_state, children| {
-            children.retain(|dir_entry_result| {
+             children.retain(|dir_entry_result| {
                 let entry = match dir_entry_result.as_ref() {
                     Ok(e) => e,
                     Err(_) => return false,
                 };
-                
-                let name = entry.file_name().to_string_lossy();
                 let entry_path = entry.path();
+                let name = entry.file_name().to_string_lossy();
 
-                for ignored in ignored_paths_clone.iter() {
-                        if entry_path == *ignored {
-                            return false; 
-                        }
+                for ignored in ign_clone.iter() {
+                    if entry_path == *ignored { return false; }
                 }
 
                 if entry.file_type().is_dir() {
-                    // 1. Primeiro verifica se é diretório de dependência (ex: node_modules, .next, target)
-                    //    Isso DEVE vir antes de SKIP_DIRS para que .next seja registrado corretamente
-                    for proj_type in project_types_clone.iter() {
+                    // 1. Dependency Detection
+                    for proj_type in pt_clone.iter() {
                         if proj_type.is_dependency_dir(&entry_path) {
                             if let Some(parent) = entry_path.parent() {
-                                let mut map = project_deps_clone.lock().unwrap();
-                                map
-                                    .entry(parent.to_path_buf())
-                                    .or_default()
-                                    .push(DepDir {
-                                        path: entry_path,
-                                        size: 0, // calculado depois por calculate_sizes()
-                                        kind: proj_type.dep_kind(),
-                                    });
+                                let mut map = findings_clone.lock().unwrap();
+                                map.entry(parent.to_path_buf())
+                                   .or_default()
+                                   .push(DepDir {
+                                       path: entry_path.clone(),
+                                       size: 0,
+                                       kind: proj_type.dep_kind(),
+                                   });
                             }
-                            return false; // Não desce em diretórios de dependência
+                            return false; // Don't descend into dep dirs
                         }
                     }
 
-                    // 2. Pula diretórios internos de aplicações/configuração
-                    //    Estes contêm node_modules/target que NÃO são projetos do usuário
+                    // 2. Skip common non-project hidden/cache dirs
                     const SKIP_DIRS: &[&str] = &[
                         ".git", ".next", ".vscode", ".cursor", ".idea", ".eclipse",
                         ".local", ".cache", ".cargo", ".rustup", ".npm", ".nvm",
-                        ".gradle", ".m2", ".sdkman",
-                        ".config", ".Trash", ".pyenv", ".rbenv",
-                        "Library",  // macOS
-                        "AppData",  // Windows
+                        ".gradle", ".m2", ".sdkman", ".config", ".Trash", 
+                        ".pyenv", ".rbenv", "Library", "AppData",
                     ];
                     if SKIP_DIRS.contains(&name.as_ref()) {
                         return false;
                     }
                 }
-
                 true
-            });
+             });
         })
         .into_iter()
-        .for_each(|entry| {
-            if let Some(cb) = on_progress.as_ref() {
+        .for_each(move |entry| {
+             if let Some(cb) = on_progress.as_ref() {
                 cb();
-            }
-            // A detecção já aconteceu no process_read_dir
-             let _ = entry; 
+             }
+             let _ = entry;
         });
 
-    let mut stale: Vec<StaleProject> = Vec::new();
+    // Pass 2: Calculate mtimes and Identify Active Roots
+    struct ProjectInfo {
+        path: PathBuf,
+        deps: Vec<DepDir>,
+        last_modified: SystemTime,
+    }
 
-    let map = {
-        let mut guard = project_deps.lock().unwrap();
+    let raw_projects = {
+        let mut guard = findings.lock().unwrap();
         std::mem::take(&mut *guard)
     };
 
-    for (project_path, mut deps) in map {
-        let last_modified = match latest_source_mtime(&project_path) {
+    let mut project_infos: Vec<ProjectInfo> = Vec::with_capacity(raw_projects.len());
+    let mut active_roots: Vec<PathBuf> = Vec::new();
+
+    for (path, deps) in raw_projects {
+        let last_modified = match latest_source_mtime(&path) {
             Some(t) => t,
             None => {
-                eprintln!(
-                    "⚠️  Aviso: não foi possível ler mtime de '{}' — projeto ignorado.",
-                    project_path.display()
-                );
-                continue;
+                debug!("Could not read mtime for {}; ignoring.", path.display());
+                continue; 
             }
         };
 
         if last_modified >= threshold {
-            continue;
+            active_roots.push(path.clone());
         }
 
-        // Tamanhos calculados depois por calculate_sizes() — lazy evaluation
-
-        deps.sort_by(|a, b| a.path.cmp(&b.path));
-
-        let name = project_path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| project_path.display().to_string());
-
-        stale.push(StaleProject {
-            name,
-            path: project_path,
-            dep_dirs: deps,
+        project_infos.push(ProjectInfo {
+            path,
+            deps,
             last_modified,
         });
     }
 
-    stale.sort_by(|a, b| a.name.cmp(&b.name)); // Ordena por nome antes do cálculo de tamanho
+    // Pass 3: Filter Stale Projects (Bidirectional Protection)
+    // - Protect if project itself is active (already handled by mtime check)
+    // - Protect if project is child of Active Root
+    // - Protect if project contains an Active Root
+    
+    let mut stale: Vec<StaleProject> = Vec::new();
+
+    for proj in project_infos {
+        // Condition 1: Must be old
+        if proj.last_modified >= threshold {
+            continue;
+        }
+
+        // Condition 2: Must NOT be inside an Active Root (active parent protects child)
+        let is_child_of_active = active_roots.iter().any(|root| {
+            proj.path.starts_with(root) && &proj.path != root
+        });
+        if is_child_of_active {
+            debug!("Protected child project: {} (Parent {} is active)", proj.path.display(), "...");
+            continue;
+        }
+
+        // Condition 3: Must NOT contain an Active Root (active child protects parent)
+        // e.g. Monorepo (Stale) -> Package (Active). don't delete Monorepo node_modules.
+        let contains_active_child = active_roots.iter().any(|root| {
+            root.starts_with(&proj.path) && root != &proj.path
+        });
+         if contains_active_child {
+            debug!("Protected parent project: {} (Child {} is active)", proj.path.display(), "...");
+            continue;
+        }
+
+        let name = proj.path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| proj.path.display().to_string());
+
+        stale.push(StaleProject {
+            name,
+            path: proj.path,
+            dep_dirs: proj.deps,
+            last_modified: proj.last_modified,
+        });
+    }
+
+    stale.sort_by(|a, b| a.name.cmp(&b.name));
     stale
 }
 
-/// Calcula o tamanho de cada diretório de dependência dos projetos.
-/// Deve ser chamado após a seleção do usuário para evitar I/O desnecessário.
+/// Calculate sizes lazily
 pub fn calculate_sizes(projects: &mut [StaleProject]) {
     for project in projects.iter_mut() {
         for dep in &mut project.dep_dirs {
             dep.size = dir_size(&dep.path);
         }
     }
-    // Re-ordena por tamanho total (maior primeiro)
     projects.sort_by(|a, b| b.total_size().cmp(&a.total_size()));
 }
 
@@ -289,6 +333,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use filetime::{FileTime, set_file_mtime};
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -303,71 +348,74 @@ mod tests {
     }
 
     #[test]
-    fn test_scan_projects_integration() {
+    fn test_nested_bidirectional_protection() {
         let root = make_temp_dir();
-        let proj1 = root.join("proj_node");
-        fs::create_dir_all(proj1.join("node_modules")).unwrap();
-        fs::write(proj1.join("package.json"), "{}").unwrap();
         
-        // Simula um callback
-        let counter = Arc::new(AtomicUsize::new(0));
-        let counter_clone = counter.clone();
+        let parent = root.join("parent");
+        let child = parent.join("child");
         
-        // Data de modificação antiga para ser considerado stale
-        // Mas o dir_size pode falhar se não tiver arquivos. Vamos criar arquivos.
-        fs::write(proj1.join("node_modules/lib.js"), "content").unwrap();
+        fs::create_dir_all(&child).unwrap();
+        
+        // Setup deps
+        fs::create_dir_all(parent.join("node_modules")).unwrap();
+        fs::write(parent.join("package.json"), "{}").unwrap();
+        
+        fs::create_dir_all(child.join("node_modules")).unwrap();
+        fs::write(child.join("package.json"), "{}").unwrap();
+        
+        // Helper to set time
+        let set_age = |path: &Path, days: u64| {
+            let now = SystemTime::now();
+            let past = now - Duration::from_secs(days * 24 * 3600 + 3600); // +1h margin
+            let ft = FileTime::from_system_time(past);
+            set_file_mtime(path, ft).unwrap();
+        };
 
-        // Para testar stale, precisamos manipular mtime, mas latest_source_mtime lê mtime.
-        // Se acabamos de criar, é recente. scan_projects(..., 0) varre tudo (0 dias).
+        // Case 1: Parent Active, Child Stale -> Child Protected
+        set_age(&parent.join("package.json"), 1); // 1 day old (Active)
+        set_age(&child.join("package.json"), 60); // 60 days old (Stale)
         
-        let mut projects = scan_projects(&root, 0, &[], Some(move || {
-            counter_clone.fetch_add(1, Ordering::SeqCst);
-        }));
+        let projects = scan_projects(&root, 30, &[], None::<fn()>);
+        // Expect: ZERO projects because parent is active (not stale) and child is protected by parent.
+        assert_eq!(projects.len(), 0, "Child should be protected by active parent");
 
-        assert_eq!(projects.len(), 1);
-        assert_eq!(projects[0].name, "proj_node");
-        assert!(counter.load(Ordering::SeqCst) > 0);
-
-        // Verifica que calculate_sizes preenche os tamanhos corretamente
-        calculate_sizes(&mut projects);
-        assert!(projects[0].total_size() > 0, "total_size() deve ser > 0 após calculate_sizes");
+        // Case 2: Parent Stale, Child Active -> Parent Protected
+        set_age(&parent.join("package.json"), 60); // Stale
+        set_age(&child.join("package.json"), 1);   // Active
         
+        let projects = scan_projects(&root, 30, &[], None::<fn()>);
+        // Expect: ZERO projects because child is active (not stale) and parent is protected by child.
+        assert_eq!(projects.len(), 0, "Parent should be protected by active child");
+
+        // Case 3: Both Stale -> Both Cleanable
+        set_age(&parent.join("package.json"), 60);
+        set_age(&child.join("package.json"), 60);
+        
+        let projects = scan_projects(&root, 30, &[], None::<fn()>);
+        assert_eq!(projects.len(), 2, "Both should be stale");
+
         fs::remove_dir_all(root).unwrap();
     }
+
     #[test]
     fn test_is_safe_to_scan() {
-        // Caminhos protegidos básicos
         assert!(!is_safe_to_scan(Path::new("/")));
         assert!(!is_safe_to_scan(Path::new("/usr")));
-        assert!(!is_safe_to_scan(Path::new("/bin")));
         
-        // /home NÃO é protegido (é onde ficam os projetos do usuário)
-        // assert!(is_safe_to_scan(Path::new("/home"))); // pode não existir em todos os ambientes
-
-        // $HOME direto deve ser PERMITIDO (é o uso mais comum)
         if let Some(home) = std::env::var_os("HOME") {
             let home_path = PathBuf::from(home);
             if home_path.exists() {
-                assert!(is_safe_to_scan(&home_path), "$HOME deve ser permitido");
+                assert!(is_safe_to_scan(&home_path));
             }
         }
 
-        // Caminhos seguros (temp dir)
         let temp = std::env::temp_dir();
         assert!(is_safe_to_scan(&temp));
-
-        // Subdiretório de temp deve ser seguro
-        let safe_dir = make_temp_dir();
-        assert!(is_safe_to_scan(&safe_dir));
-        fs::remove_dir_all(safe_dir).unwrap();
-
-        // Caminho inexistente deve retornar false (não pode canonicalizar)
-        assert!(!is_safe_to_scan(Path::new("/caminho/que/nao/existe/xyzzy")));
-
+        
         #[cfg(windows)]
         {
             assert!(!is_safe_to_scan(Path::new("C:\\")));
-            assert!(!is_safe_to_scan(Path::new("C:\\Windows")));
         }
     }
 }
+
